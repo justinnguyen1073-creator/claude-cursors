@@ -50,7 +50,7 @@ FILL = 0.94
 # symbol written inside it, or the ring orbiting it. The busy teardrop is smaller so the
 # ring fits; its tip stays on the click point.
 GLYPH_FILL = 0.95   # symbol size relative to the teardrop's body
-BUSY_TEAR = 0.62    # busy teardrop size
+BUSY_RING_AT = 0.5  # busy ring's center: 0 = the teardrop's tip, 1 = the center of its body
 # The pointing hand: the spark's outline morphs straight into a solid teardrop whose tip
 # is on the click point, the legs curving into the body as they go. Xcursor animations
 # always loop, so the last frame (the teardrop) is held for an hour.
@@ -174,21 +174,36 @@ def _hull(pts):
     return lower[:-1] + upper[:-1]
 
 
-def teardrop_body(size, scale=1.0, direction=45):
+def teardrop_body(size, scale=1.0, direction=45, tip=None):
     """Center (px) and radius of the teardrop's round body. `direction` is where the body
-    hangs from the tip, in degrees (y down): 45 = lower right, 90 = straight down."""
-    tx, ty = _center(size)
+    hangs from the tip, in degrees (y down): 45 = lower right, 90 = straight down. The
+    teardrop is always the same size (the one that fits hanging diagonally from the
+    cursor's center); only `scale` changes it. `tip` defaults to the cursor's center."""
+    tx, ty = tip or _center(size)
     ux, uy = math.cos(math.radians(direction)), math.sin(math.radians(direction))
     room = size / 2 - 0.5 - max(1.5, size / 24)            # margin for the shadow
-    R = room / (TEAR_RATIO * max(abs(ux), abs(uy)) + 1) * scale
+    R = room / (TEAR_RATIO / math.sqrt(2) + 1) * scale
     d = TEAR_RATIO * R
     return tx + ux * d, ty + uy * d, R
 
 
-def teardrop_points(size, scale=1.0, direction=45):
-    """Outline (px) of the solid teardrop: tip on the click point, body toward `direction`."""
+def teardrop_tip_for(size, direction):
+    """Where the tip must go so a full-size teardrop hanging toward `direction` fits."""
     tx, ty = _center(size)
-    R = teardrop_body(size, scale, direction)[2]
+    _, _, R = teardrop_body(size)
+    ux, uy = math.cos(math.radians(direction)), math.sin(math.radians(direction))
+    edge = size - 0.5 - max(1.5, size / 24)
+    reach = TEAR_RATIO * R + R
+    tx = min(tx, edge - ux * reach) if ux > 0 else max(tx, size - edge - ux * reach) if ux < 0 else tx
+    ty = min(ty, edge - uy * reach) if uy > 0 else ty
+    return tx, ty
+
+
+def teardrop_points(size, scale=1.0, direction=45, tip=None):
+    """Outline (px) of the solid teardrop: tip at `tip` (default: the click point at the
+    cursor's center), body toward `direction`."""
+    tx, ty = tip or _center(size)
+    R = teardrop_body(size, scale, direction, tip)[2]
     d = TEAR_RATIO * R
     ux, uy = math.cos(math.radians(direction)), math.sin(math.radians(direction))
     rt = 0.14 * R                                          # rounded tip
@@ -338,12 +353,44 @@ def _tear_with_ink(size, scale, layers):
 
 
 def busy_image(size, f):
-    """Frame f: a smaller teardrop with Duet's ink ring orbiting its body."""
+    """Frame f: the link-hover teardrop at its full size (it is never resized) with Duet's
+    ink ring orbiting it. The ring is centered partway along the teardrop and sized as big
+    as the cursor allows, so it circles the whole shape and passes behind it."""
     back, _, front = duet.frame(f * DELAY_MS / 1000)
-    scale = 18.0 / duet.ORBIT_RADIUS  # the ring was drawn around a blob of ORBIT_RADIUS
-    back = [_scale_path(p, scale) for p in back]
-    front = [_scale_path(p, scale) for p in front]
-    return _tear_with_ink(size, BUSY_TEAR, (back, front))
+    tx, ty = _center(size)                    # the tip, on the click point
+    bx, by, R = teardrop_body(size)
+    t = BUSY_RING_AT
+    cx, cy = tx + (bx - tx) * t, ty + (by - ty) * t
+    x0, y0, x1, y1 = duet.BOUNDS
+    margin = max(1.5, size / 24)
+    k = min((size - margin - cx) / x1, (cx - margin) / -x0,
+            (size - margin - cy) / y1, (cy - margin) / -y0)
+    tear = teardrop_points(size)
+
+    def draw(ctx, shadow):
+        def ink(paths):
+            ctx.save()
+            ctx.translate(cx, cy)
+            ctx.scale(k, k)
+            for path in paths:
+                duet.trace(ctx, path)
+                ctx.fill()
+            ctx.restore()
+
+        dark = (0, 0, 0, 1) if shadow else duet.INK + (1,)
+        ctx.set_source_rgba(*dark)
+        ink(back)
+        ctx.new_path()
+        ctx.move_to(*tear[0])
+        for q in tear[1:]:
+            ctx.line_to(*q)
+        ctx.close_path()
+        ctx.set_source_rgba(0, 0, 0, 1) if shadow else ctx.set_source_rgb(*COLOR)
+        ctx.fill()
+        ctx.set_source_rgba(*dark)
+        ink(front)
+
+    return _paint(size, draw)
 
 
 def _scale_path(path, k):
@@ -539,8 +586,10 @@ def build(out_dir, inherits=None, use_cursor_cursors=True):
     _link_all(cur, "openhand", aliases("openhand"))
     write_frames(os.path.join(cur, "pirate"), every(lambda s, f: spark_image(s, f / FRAMES, color=DEATH_COLOR)))
     for name, direction in TEAR_POINTERS.items():
-        write_frames(os.path.join(cur, name),
-                     lambda s, d=direction: ([_poly_image(s, teardrop_points(s, direction=d))], hotspot(s)))
+        def tear_pointer(s, d=direction):
+            tip = teardrop_tip_for(s, d)  # full size; the tip moves if the body needs room
+            return [_poly_image(s, teardrop_points(s, direction=d, tip=tip))], (int(tip[0]), int(tip[1]))
+        write_frames(os.path.join(cur, name), tear_pointer)
         _link_all(cur, name, aliases(name))
 
     for name in ink_symbols.SYMBOLS:

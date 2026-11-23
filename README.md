@@ -68,6 +68,7 @@ Values you can change at the top of `build.py`:
 - `ink_symbols.py` draws the caret and arrows with the same brush.
 - `build.py` renders every frame with cairo and writes standard animated Xcursor files.
 - `make_docs.py` renders the preview GIFs in `docs/`.
+- `tools/compare.py` opens a window showing two cursors from any installed theme side by side, animated, with click points and an optional outline of one over the other. It needs PyQt6.
 
 ## Credits
 

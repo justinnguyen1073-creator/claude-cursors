@@ -146,7 +146,7 @@ class HoverZone(QLabel):
         super().__init__(text)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setFrameShape(QFrame.Shape.Box)
-        self.setMinimumHeight(70)
+        self.setMinimumHeight(110)
         self.setCursor(shape)
 
 
@@ -186,6 +186,7 @@ class Compare(QWidget):
         views.addWidget(self.left_view)
         views.addWidget(self.right_view)
         zones = QHBoxLayout()
+        zones.setSpacing(0)  # boxes touch, so the cursor switches with no gap in between
         for text, shape in (("Hover: link", Qt.CursorShape.PointingHandCursor),
                             ("Hover: help", Qt.CursorShape.WhatsThisCursor),
                             ("Hover: busy", Qt.CursorShape.BusyCursor),

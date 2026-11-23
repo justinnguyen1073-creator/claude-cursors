@@ -31,9 +31,15 @@ def strip(ims, S, gap=0):
     return row
 
 S = 96
-save_gif('docs/pointer.gif', [strip([build.spark_image(S, f / 48), build.spark_image(S, f / 48, grab=True)], S) for f in range(48)], 70, scale=2)
+save_gif('docs/pointer.gif', [strip([build.spark_image(S, f / 48, shrink=build.POINTER_SHRINK), build.spark_image(S, f / 48, grab=True)], S) for f in range(48)], 70, scale=2)
 # Hover: the spark for a moment, the morph at real speed, then the teardrop.
-spark = [build.spark_image(S, f / 48) for f in range(0, 48, 2)]
+def on_tear_tip(im):
+    # the spark drawn around the hover cursor's click point, which sits up-left of center
+    out = Image.new('RGBA', im.size, (0, 0, 0, 0))
+    d = round(build.tear_tip(S)[0] - build._center(S)[0])
+    out.alpha_composite(im, (d, d)) if d >= 0 else out.paste(im.crop((-d, -d, S, S)), (0, 0))
+    return out
+spark = [on_tear_tip(build.spark_image(S, f / 48)) for f in range(0, 48, 2)]
 morph = [im for im, _ in build.hover_frames(S)]
 save_gif('docs/hover.gif', [strip([im], S) for im in spark + morph + [morph[-1]] * 20],
          [70] * len(spark) + [build.MORPH_MS] * len(morph) + [70] * 20, scale=2)
@@ -51,6 +57,6 @@ C, W = 240, 280
 show = []
 for im, ms in showcase.frames(C):
     f = Image.new('RGBA', (W, W), BG)
-    f.alpha_composite(im, ((W - C) // 2, (W - C) // 2))
+    f.alpha_composite(im, ((W - im.width) // 2, (W - im.height) // 2))
     show.append((f, ms))
 save_gif('docs/showcase.gif', [f for f, _ in show], [ms for _, ms in show])

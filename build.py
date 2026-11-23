@@ -53,6 +53,7 @@ POINTER_SHRINK = 1 - 1 / ((round(24 * 1.25) / 2 - 0.5) * 2 * FILL)
 # ring fits; its tip stays on the click point.
 GLYPH_FILL = 0.95   # symbol size relative to the teardrop's body
 BUSY_RING_AT = 0.5  # busy ring's center: 0 = the teardrop's tip, 1 = the center of its body
+BUSY_RING_DROP = 2 / 30  # then moved straight down by this fraction of the canvas (2 px at size 24)
 # The pointing hand: the spark's outline morphs straight into a solid teardrop whose tip
 # is on the click point, the legs curving into the body as they go. Xcursor animations
 # always loop, so the last frame (the teardrop) is held for an hour.
@@ -63,6 +64,8 @@ BEND_TO = math.radians(45)          # toward the teardrop's body (down-right); l
 BEND = 0.8                          # how much of the way each leg curves toward it
 BEND_MAX = math.radians(120)        # cap for legs pointing the opposite way
 TEAR_RATIO = 1.8                    # tip-to-center distance / body radius (higher = sharper tip)
+# Every teardrop is this much bigger than the one that fits the shadow margin: 1 px across at size 24.
+TEAR_SCALE = 1 + 1 / (round(24 * 1.25) / 2 - 0.5 - 1.5)
 
 
 def _rand(i, salt):
@@ -112,10 +115,12 @@ def _to_pil(surf, size):
     return Image.frombuffer("RGBA", (size, size), bytes(surf.get_data()), "raw", "BGRa", 0, 1).copy()
 
 
-def _paint(size, draw):
-    """Render draw(ctx, shadow) with the soft drop shadow every cursor here uses."""
-    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
-    shadow = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
+def _paint(size, draw, canvas=None):
+    """Render draw(ctx, shadow) with the soft drop shadow every cursor here uses, on a
+    `canvas` px square (default: `size`)."""
+    canvas = canvas or size
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, canvas, canvas)
+    shadow = cairo.ImageSurface(cairo.FORMAT_ARGB32, canvas, canvas)
     ctx, sctx = cairo.Context(surf), cairo.Context(shadow)
     for c in (ctx, sctx):
         c.set_antialias(cairo.ANTIALIAS_BEST)
@@ -125,7 +130,7 @@ def _paint(size, draw):
     ctx.paint_with_alpha(0.32)
     draw(ctx, False)
     surf.flush()
-    return _to_pil(surf, size)
+    return _to_pil(surf, canvas)
 
 
 # ---- the spark ----
@@ -179,20 +184,34 @@ def _hull(pts):
 def teardrop_body(size, scale=1.0, direction=45, tip=None):
     """Center (px) and radius of the teardrop's round body. `direction` is where the body
     hangs from the tip, in degrees (y down): 45 = lower right, 90 = straight down. The
-    teardrop is always the same size (the one that fits hanging diagonally from the
-    cursor's center); only `scale` changes it. `tip` defaults to the cursor's center."""
-    tx, ty = tip or _center(size)
+    teardrop is always the same size (TEAR_SCALE times the one that fits hanging diagonally
+    from the cursor's center); only `scale` changes it. `tip` defaults to tear_tip(size)."""
+    tx, ty = tip or tear_tip(size)
     ux, uy = math.cos(math.radians(direction)), math.sin(math.radians(direction))
     room = size / 2 - 0.5 - max(1.5, size / 24)            # margin for the shadow
-    R = room / (TEAR_RATIO / math.sqrt(2) + 1) * scale
+    R = room / (TEAR_RATIO / math.sqrt(2) + 1) * TEAR_SCALE * scale
     d = TEAR_RATIO * R
     return tx + ux * d, ty + uy * d, R
+
+
+def tear_tip(size):
+    """The teardrop's tip (the click point) on the canvas for the link-hover and badge
+    cursors: the center, moved up and left by whole pixels when the teardrop and its
+    shadow margin need the room."""
+    tx, ty = _center(size)
+    bx, _, R = teardrop_body(size, tip=(tx, ty))
+    s = max(0, math.ceil(bx + R - (size - max(1.5, size / 24)) - 1e-6))  # same margin as before TEAR_SCALE
+    return tx - s, ty - s
+
+
+def tear_hotspot(size):
+    return tuple(int(v) for v in tear_tip(size))
 
 
 def teardrop_tip_for(size, direction):
     """Where the tip must go so a full-size teardrop hanging toward `direction` fits."""
     tx, ty = _center(size)
-    _, _, R = teardrop_body(size)
+    _, _, R = teardrop_body(size, tip=(tx, ty))
     ux, uy = math.cos(math.radians(direction)), math.sin(math.radians(direction))
     edge = size - 0.5 - max(1.5, size / 24)
     reach = TEAR_RATIO * R + R
@@ -202,9 +221,9 @@ def teardrop_tip_for(size, direction):
 
 
 def teardrop_points(size, scale=1.0, direction=45, tip=None):
-    """Outline (px) of the solid teardrop: tip at `tip` (default: the click point at the
-    cursor's center), body toward `direction`."""
-    tx, ty = tip or _center(size)
+    """Outline (px) of the solid teardrop: tip at `tip` (default: tear_tip(size), the click
+    point), body toward `direction`."""
+    tx, ty = tip or tear_tip(size)
     R = teardrop_body(size, scale, direction, tip)[2]
     d = TEAR_RATIO * R
     ux, uy = math.cos(math.radians(direction)), math.sin(math.radians(direction))
@@ -247,7 +266,7 @@ def hover_frames(size):
     """[(image, delay ms)] for the pointing hand: the spark's outline morphs straight into
     the teardrop's, legs curving toward the body as they go; then the teardrop holds."""
     n = spark_logo.N_LEGS
-    cx, cy = _center(size)
+    cx, cy = tear_tip(size)                    # the click point; the teardrop needs the room
     k = _unit(size)
 
     def bends(amount):
@@ -354,18 +373,37 @@ def _tear_with_ink(size, scale, layers):
     return _paint(size, draw)
 
 
-def busy_ring_place(size):
-    """Where the busy ring goes: its center (px) and px per ring unit. Centered partway
-    along the teardrop (BUSY_RING_AT) and as big as fits inside the cursor."""
-    tx, ty = _center(size)                    # the tip, on the click point
-    bx, by, R = teardrop_body(size)
-    t = BUSY_RING_AT
-    cx, cy = tx + (bx - tx) * t, ty + (by - ty) * t
+def busy_ring_place(size, tip=None):
+    """Where the busy ring goes: its center (px) and px per ring unit. Centered across the
+    teardrop's width and BUSY_RING_AT along it (plus BUSY_RING_DROP) down from the tip.
+    `tip` defaults to busy_tip(size). The ring's size depends only on `size`."""
+    tx, ty = tip or busy_tip(size)
+    xs = [x for x, _ in teardrop_points(size, tip=(tx, ty))]
+    _, by, _ = teardrop_body(size, tip=(tx, ty))
+    cx = (min(xs) + max(xs)) / 2
+    cy = ty + (by - ty) * BUSY_RING_AT + BUSY_RING_DROP * size
+    return cx, cy, _busy_ring_scale(size)
+
+
+def _busy_ring_scale(size):
+    """px per ring unit: as big as fits with the ring centered partway along a teardrop
+    whose tip is at the canvas center, before TEAR_SCALE; then grown with the teardrop."""
+    tx, ty = _center(size)
+    bx, by, _ = teardrop_body(size, 1 / TEAR_SCALE, tip=(tx, ty))
+    cx, cy = tx + (bx - tx) * BUSY_RING_AT, ty + (by - ty) * BUSY_RING_AT
     x0, y0, x1, y1 = duet.BOUNDS
     margin = max(1.5, size / 24)
-    k = min((size - margin - cx) / x1, (cx - margin) / -x0,
-            (size - margin - cy) / y1, (cy - margin) / -y0)
-    return cx, cy, k
+    return TEAR_SCALE * min((size - margin - cx) / x1, (cx - margin) / -x0,
+                            (size - margin - cy) / y1, (cy - margin) / -y0)
+
+
+def busy_tip(size):
+    """The busy cursor's tip (its click point) on the canvas: left of center by whole pixels,
+    just enough for the ring, centered across the teardrop, to fit on the right."""
+    tx, ty = tear_tip(size)
+    cx, _, k = busy_ring_place(size, (tx, ty))
+    over = cx + duet.BOUNDS[2] * k - (size - max(1.5, size / 24))
+    return tx - max(0, math.ceil(over - 1e-9)), ty
 
 
 def glyph_place(size):
@@ -374,13 +412,15 @@ def glyph_place(size):
     return bx, by, R / 18.0 * GLYPH_FILL
 
 
-def busy_image(size, f):
+def busy_image(size, f, tip=None, canvas=None):
     """Frame f: the link-hover teardrop at its full size (it is never resized) with Duet's
-    ink ring orbiting it. The ring is centered partway along the teardrop and sized as big
-    as the cursor allows, so it circles the whole shape and passes behind it."""
+    ink ring orbiting it. The ring is centered across the teardrop and sized as big as the
+    cursor allows, so it circles the whole shape and passes behind it. The teardrop sits at
+    `tip` (default busy_tip, left of center to make room for the ring) on a `canvas` px square."""
     back, _, front = duet.frame(f * DELAY_MS / 1000)
-    cx, cy, k = busy_ring_place(size)
-    tear = teardrop_points(size)
+    tip = tip or busy_tip(size)
+    cx, cy, k = busy_ring_place(size, tip)
+    tear = teardrop_points(size, tip=tip)
 
     def draw(ctx, shadow):
         def ink(paths):
@@ -405,7 +445,7 @@ def busy_image(size, f):
         ctx.set_source_rgba(*dark)
         ink(front)
 
-    return _paint(size, draw)
+    return _paint(size, draw, canvas)
 
 
 def _scale_path(path, k):
@@ -579,16 +619,18 @@ def build(out_dir, inherits=None, use_cursor_cursors=True):
     write_frames(os.path.join(cur, "grabbing"), every(lambda s, f: spark_image(s, f / FRAMES, grab=True)))
     _link_all(cur, "grabbing", GRAB_NAMES)
 
-    write_frames(os.path.join(cur, "pointer"), lambda s: (hover_frames(s), hotspot(s)))
+    write_frames(os.path.join(cur, "pointer"), lambda s: (hover_frames(s), tear_hotspot(s)))
     _link_all(cur, "pointer", aliases("pointer"))
 
-    write_frames(os.path.join(cur, "progress"), every(busy_image, BUSY_FRAMES))
+    write_frames(os.path.join(cur, "progress"),
+                 lambda s: ([busy_image(s, f) for f in range(BUSY_FRAMES)], tuple(map(int, busy_tip(s)))))
     _link_all(cur, "progress", BUSY_NAMES)
     write_frames(os.path.join(cur, "wait"), every(wait_image, BUSY_FRAMES))
     _link_all(cur, "wait", WAIT_NAMES)
 
     for name, kind in BADGED.items():
-        write_frames(os.path.join(cur, name), every(lambda s, f, k=kind: badged_image(s, f, k)))
+        write_frames(os.path.join(cur, name),
+                     lambda s, k=kind: ([badged_image(s, f, k) for f in range(FRAMES)], tear_hotspot(s)))
         _link_all(cur, name, aliases(name))
     for name, kind in ROUND.items():
         write_frames(os.path.join(cur, name), every(lambda s, f, k=kind: round_image(s, f, k)))

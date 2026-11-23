@@ -352,11 +352,9 @@ def _tear_with_ink(size, scale, layers):
     return _paint(size, draw)
 
 
-def busy_image(size, f):
-    """Frame f: the link-hover teardrop at its full size (it is never resized) with Duet's
-    ink ring orbiting it. The ring is centered partway along the teardrop and sized as big
-    as the cursor allows, so it circles the whole shape and passes behind it."""
-    back, _, front = duet.frame(f * DELAY_MS / 1000)
+def busy_ring_place(size):
+    """Where the busy ring goes: its center (px) and px per ring unit. Centered partway
+    along the teardrop (BUSY_RING_AT) and as big as fits inside the cursor."""
     tx, ty = _center(size)                    # the tip, on the click point
     bx, by, R = teardrop_body(size)
     t = BUSY_RING_AT
@@ -365,6 +363,21 @@ def busy_image(size, f):
     margin = max(1.5, size / 24)
     k = min((size - margin - cx) / x1, (cx - margin) / -x0,
             (size - margin - cy) / y1, (cy - margin) / -y0)
+    return cx, cy, k
+
+
+def glyph_place(size):
+    """Where a badge symbol goes inside the teardrop: its center (px) and px per glyph unit."""
+    bx, by, R = teardrop_body(size)
+    return bx, by, R / 18.0 * GLYPH_FILL
+
+
+def busy_image(size, f):
+    """Frame f: the link-hover teardrop at its full size (it is never resized) with Duet's
+    ink ring orbiting it. The ring is centered partway along the teardrop and sized as big
+    as the cursor allows, so it circles the whole shape and passes behind it."""
+    back, _, front = duet.frame(f * DELAY_MS / 1000)
+    cx, cy, k = busy_ring_place(size)
     tear = teardrop_points(size)
 
     def draw(ctx, shadow):

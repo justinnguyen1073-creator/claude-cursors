@@ -15,7 +15,7 @@ import sys
 
 from PyQt6.QtCore import QRect, Qt, QTimer
 from PyQt6.QtGui import QColor, QImage, QPainter, QPen
-from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel,
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QHBoxLayout, QLabel,
                              QPushButton, QSlider, QSpinBox, QVBoxLayout, QWidget)
 
 ICONS = os.path.expanduser("~/.icons")
@@ -139,15 +139,45 @@ class CursorView(QWidget):
         return 0 <= x < img.width() and 0 <= y < img.height() and QColor.fromRgba(img.pixel(x, y)).alpha() > 250
 
 
-class HoverZone(QLabel):
-    """A box that switches your real cursor when you hover it."""
+class HoverStrip(QWidget):
+    """One widget split into sections; the section under the mouse sets your real cursor.
+    Being a single widget, there is no gap between sections for the cursor to fall into."""
 
-    def __init__(self, text, shape):
-        super().__init__(text)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setFrameShape(QFrame.Shape.Box)
+    def __init__(self, zones):
+        super().__init__()
+        self.zones = zones  # [(label, Qt.CursorShape)]
+        self.current = None
+        self.setMouseTracking(True)
         self.setMinimumHeight(110)
-        self.setCursor(shape)
+
+    def _index(self, x):
+        return min(len(self.zones) - 1, max(0, int(x * len(self.zones) / max(1, self.width()))))
+
+    def mouseMoveEvent(self, event):
+        i = self._index(event.position().x())
+        if i != self.current:
+            self.current = i
+            self.setCursor(self.zones[i][1])
+            self.update()
+
+    def leaveEvent(self, event):
+        self.current = None
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        n = len(self.zones)
+        for i, (label, _) in enumerate(self.zones):
+            x0, x1 = i * self.width() // n, (i + 1) * self.width() // n
+            p.fillRect(x0, 0, x1 - x0, self.height(),
+                       QColor(225, 222, 214) if i == self.current else QColor(240, 238, 232))
+            p.setPen(QColor(40, 40, 40))
+            p.drawText(QRect(x0, 0, x1 - x0, self.height()), Qt.AlignmentFlag.AlignCenter, label)
+            if i:
+                p.setPen(QColor(150, 150, 150))
+                p.drawLine(x0, 0, x0, self.height())
+        p.setPen(QColor(150, 150, 150))
+        p.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
 
 class Compare(QWidget):
@@ -185,20 +215,17 @@ class Compare(QWidget):
         views = QHBoxLayout()
         views.addWidget(self.left_view)
         views.addWidget(self.right_view)
-        zones = QHBoxLayout()
-        zones.setSpacing(0)  # boxes touch, so the cursor switches with no gap in between
-        for text, shape in (("Hover: link", Qt.CursorShape.PointingHandCursor),
+        strip = HoverStrip([("Hover: link", Qt.CursorShape.PointingHandCursor),
                             ("Hover: help", Qt.CursorShape.WhatsThisCursor),
                             ("Hover: busy", Qt.CursorShape.BusyCursor),
                             ("Hover: text", Qt.CursorShape.IBeamCursor),
-                            ("Hover: normal", Qt.CursorShape.ArrowCursor)):
-            zones.addWidget(HoverZone(text, shape))
+                            ("Hover: normal", Qt.CursorShape.ArrowCursor)])
         layout = QVBoxLayout(self)
         layout.addLayout(top)
         layout.addLayout(pickers)
         layout.addLayout(views, 1)
         layout.addWidget(QLabel("Your real cursor (whatever theme is active in System Settings):"))
-        layout.addLayout(zones)
+        layout.addWidget(strip)
 
         self.theme.currentTextChanged.connect(lambda _: (self._fill_names(self.left_name.currentText(),
                                                                           self.right_name.currentText()), self.reload()))

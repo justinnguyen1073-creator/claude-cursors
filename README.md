@@ -65,6 +65,7 @@ Values you can change at the top of `build.py`:
 - `duet.py` draws the Duet mascot: the ink brush, the blob, the working, loop, and orbit poses, and the switch between them. It also draws the symbol badges.
 - `ink_symbols.py` draws the caret and arrows with the same brush.
 - `build.py` renders every frame with cairo and writes standard animated Xcursor files.
+- `make_docs.py` renders the preview GIFs in `docs/`.
 
 ## Credits
 

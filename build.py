@@ -44,7 +44,17 @@ BADGE_SHRINK = 0.62
 BADGE_POS = (0.765, 0.765, 0.215)  # badge blob center x, y and radius, per cursor size
 BUSY_SHRINK = 0.62
 BUSY_SCALE = 0.0098  # mascot viewBox unit in pixels, per pixel of cursor size
-LOGO_FRAMES = 24      # the pointing hand breathes slowly; half the frames, double length
+# The pointing hand: the spark unravels, its legs meet at the click point, and a solid
+# teardrop grows out of that point with its tip on it. Xcursor animations always loop, so
+# the last frame (the teardrop) is held for an hour.
+MORPH_MS = 35                       # frame length while morphing
+UNRAVEL, CONVERGE, GROW = 8, 3, 10  # frames in each part
+HOLD_MS = 3_600_000
+BEND_TO = math.radians(-135)        # the teardrop's tip direction (up-left); legs curve toward it
+BEND = 0.8                          # how much of the way each leg curves toward it
+BEND_MAX = math.radians(120)        # cap for legs pointing the opposite way
+TEAR_RATIO = 1.8                    # tip-to-center distance / body radius (higher = sharper tip)
+GROW_OVERSHOOT = 1.2                # how much the teardrop overshoots as it pops in
 
 
 def _rand(i, salt):
@@ -139,10 +149,106 @@ def spark_image(size, t, grab=False, shrink=1.0, still=False, breathe=1.0):
     return _paint(size, draw)
 
 
-def logo_image(size, f):
-    """The pointing hand: the logo at rest, gently breathing."""
-    breathe = 1 - 0.05 * (0.5 - 0.5 * math.cos(2 * math.pi * f / LOGO_FRAMES))
-    return spark_image(size, 0, still=True, breathe=breathe)
+def _ease_in(t):
+    return t * t * t
+
+
+def _ease_out_back(t, s=1.7):
+    t -= 1
+    return 1 + (s + 1) * t ** 3 + s * t ** 2
+
+
+def _hull(pts):
+    pts = sorted(set(pts))
+    cross = lambda o, a, b: (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lower, upper = [], []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
+def teardrop_image(size, grow):
+    """Solid orange teardrop, tip on the click point, body to the lower right; `grow`
+    scales it about the tip (0 = a point, 1 = full size)."""
+    tx, ty = _center(size)
+    peak = max(_ease_out_back(i / 200, GROW_OVERSHOOT) for i in range(201))
+    room = size / 2 - 0.5 - max(1.5, size / 24)            # margin for the shadow
+    R = room / (TEAR_RATIO / math.sqrt(2) + 1) / peak      # fits even at its biggest
+    d = TEAR_RATIO * R
+    ux = uy = 1 / math.sqrt(2)                             # toward the lower right
+    rt = 0.14 * R                                          # rounded tip
+    off = rt / (R / d)                                     # keeps the tip's outer edge on the point
+    circles = [(tx + ux * d, ty + uy * d, R), (tx + ux * off, ty + uy * off, rt)]
+    pts = [(cx + r * math.cos(a * math.pi / 64), cy + r * math.sin(a * math.pi / 64))
+           for cx, cy, r in circles for a in range(128)]
+    pts = [(tx + (x - tx) * grow, ty + (y - ty) * grow) for x, y in _hull(pts)]
+
+    def draw(ctx, shadow):
+        if grow <= 0.01:
+            return
+        ctx.new_path()
+        ctx.move_to(*pts[0])
+        for p in pts[1:]:
+            ctx.line_to(*p)
+        ctx.close_path()
+        if shadow:
+            ctx.set_source_rgba(0, 0, 0, 1)
+        else:
+            ctx.set_source_rgb(*COLOR)
+        ctx.fill()
+
+    return _paint(size, draw)
+
+
+def hover_frames(size):
+    """[(image, delay ms)] for the pointing hand: unravel, converge, grow, hold."""
+    n = spark_logo.N_LEGS
+    out = []
+    def bends(amount):
+        out = []
+        for a in spark_logo.LEG_ANGLE:
+            diff = (BEND_TO - a + math.pi) % (2 * math.pi) - math.pi
+            out.append(max(-BEND_MAX, min(BEND_MAX, diff)) * BEND * amount)
+        return out
+
+    for f in range(UNRAVEL):  # each leg curves toward the tip direction and pulls into the hub
+        p = (f + 1) / UNRAVEL
+        curve = 1 - (1 - p) ** 2
+        pts = spark_logo.outline([1.0] * n, bends(curve), 1 - _ease_in(p) * 0.999)
+        out.append((_shape_image(size, pts, 1.0), MORPH_MS))
+    for f in range(CONVERGE):  # the hub closes into the click point
+        p = (f + 1) / (CONVERGE + 1)
+        pts = spark_logo.outline([1.0] * n, bends(1.0), 0.001)
+        out.append((_shape_image(size, pts, 1 - p * 0.92), MORPH_MS))
+    for f in range(GROW):  # the teardrop grows out of the point
+        out.append((teardrop_image(size, _ease_out_back((f + 1) / GROW, GROW_OVERSHOOT)), MORPH_MS))
+    out[-1] = (out[-1][0], HOLD_MS)
+    return out
+
+
+def _shape_image(size, pts, k_mul):
+    cx, cy = _center(size)
+    k = _unit(size) * k_mul
+
+    def draw(ctx, shadow):
+        ctx.new_path()
+        ctx.move_to(cx + pts[0][0] * k, cy + pts[0][1] * k)
+        for x, y in pts[1:]:
+            ctx.line_to(cx + x * k, cy + y * k)
+        ctx.close_path()
+        if shadow:
+            ctx.set_source_rgba(0, 0, 0, 1)
+        else:
+            ctx.set_source_rgb(*COLOR)
+        ctx.fill()
+
+    return _paint(size, draw)
 
 
 # ---- Duet pieces ----
@@ -288,7 +394,8 @@ def write_frames(path, frames_for_size, delay=DELAY_MS):
     for size in SIZES:
         ims, (hx, hy) = frames_for_size(size)
         for im in ims:
-            images.append((size, im.size[0], im.size[1], hx, hy, delay, im.tobytes("raw", "BGRa")))
+            im, dl = im if isinstance(im, tuple) else (im, delay)  # (image, delay) sets its own
+            images.append((size, im.size[0], im.size[1], hx, hy, dl, im.tobytes("raw", "BGRa")))
     ntoc = len(images)
     header = struct.pack("<4sIII", b"Xcur", 16, 0x10000, ntoc)
     pos = 16 + ntoc * 12
@@ -348,8 +455,7 @@ def build(out_dir, inherits=None, use_starpoint=True):
     write_frames(os.path.join(cur, "grabbing"), every(lambda s, f: spark_image(s, f / FRAMES, grab=True)))
     _link_all(cur, "grabbing", GRAB_NAMES)
 
-    write_frames(os.path.join(cur, "pointer"), every(logo_image, LOGO_FRAMES),
-                 delay=DELAY_MS * FRAMES // LOGO_FRAMES)
+    write_frames(os.path.join(cur, "pointer"), lambda s: (hover_frames(s), hotspot(s)))
     _link_all(cur, "pointer", aliases("pointer"))
 
     write_frames(os.path.join(cur, "progress"), every(busy_image, BUSY_FRAMES))

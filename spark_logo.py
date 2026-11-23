@@ -131,3 +131,15 @@ def outline(stretch, sway, scale=1.0):
             a += sway[leg] * k
         pts.append((r * math.cos(a), r * math.sin(a)))
     return pts
+
+
+def _leg_angles():
+    """Direction (radians, y down) from the hub to each leg's farthest point."""
+    best = {}
+    for (r, a), leg in zip(_POLAR, LEG_OF):
+        if leg is not None and r > best.get(leg, (0, 0))[0]:
+            best[leg] = (r, a)
+    return [best[i][1] for i in range(N_LEGS)]
+
+
+LEG_ANGLE = _leg_angles()

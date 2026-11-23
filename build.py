@@ -45,6 +45,8 @@ MAX_STRETCH = 1 + STRETCH * 1.3 + FLICKER  # longest a leg ever gets
 
 # The spark's reach at full stretch, as a fraction of half the cursor size.
 FILL = 0.94
+# The default pointer is drawn this much smaller than the other sparks: 1 px across at size 24.
+POINTER_SHRINK = 1 - 1 / ((round(24 * 1.25) / 2 - 0.5) * 2 * FILL)
 
 # Badged and busy cursors are the hover teardrop with Duet's ink on its round body: the
 # symbol written inside it, or the ring orbiting it. The busy teardrop is smaller so the
@@ -572,7 +574,7 @@ def build(out_dir, inherits=None, use_cursor_cursors=True):
     os.makedirs(cur, exist_ok=True)
     every = lambda fn, n=FRAMES: (lambda s: ([fn(s, f) for f in range(n)], hotspot(s)))
 
-    write_frames(os.path.join(cur, "left_ptr"), every(lambda s, f: spark_image(s, f / FRAMES)))
+    write_frames(os.path.join(cur, "left_ptr"), every(lambda s, f: spark_image(s, f / FRAMES, shrink=POINTER_SHRINK)))
     _link_all(cur, "left_ptr", POINTER_NAMES)
     write_frames(os.path.join(cur, "grabbing"), every(lambda s, f: spark_image(s, f / FRAMES, grab=True)))
     _link_all(cur, "grabbing", GRAB_NAMES)

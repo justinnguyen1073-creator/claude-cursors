@@ -32,6 +32,9 @@ FRAMES = 48
 DELAY_MS = 70  # 48 * 70ms = 3.36s loop
 
 GRAB_SCALE = 0.65  # leg length past the hub while a window is held
+OPEN_STRETCH = 1.15  # open hand (hovering something draggable): every leg fully out
+DEATH_COLOR = (0xD6 / 255, 0x3A / 255, 0x2F / 255)  # the pirate / kill cursor's red spark
+DND_BADGE = (0.765, 0.765, 0.2)  # drag-and-drop badge: center x, y and radius, per canvas size
 
 # Motion: every leg jitters on its own, with its own speeds and phases, stretching and
 # swaying independently. Frequencies are whole numbers so the loop is seamless.
@@ -125,14 +128,18 @@ def _paint(size, draw):
 
 # ---- the spark ----
 
-def spark_image(size, t, grab=False, shrink=1.0, still=False, breathe=1.0):
-    """Spark centered on the hotspot. t in [0, 1) drives the legs unless `still`."""
+def spark_image(size, t, grab=False, shrink=1.0, still=False, breathe=1.0, color=COLOR, open_hand=False):
+    """Spark centered on the hotspot. t in [0, 1) drives the legs unless `still`.
+    `open_hand` holds every leg near full stretch, with only a small jitter."""
     n = spark_logo.N_LEGS
     if still:
         stretch, sway = [1.0] * n, [0.0] * n
     else:
         motion = [leg_motion(i, t) for i in range(n)]
         stretch, sway = [m[0] for m in motion], [m[1] for m in motion]
+        if open_hand:
+            stretch = [OPEN_STRETCH + 0.25 * (f - 1) for f in stretch]
+            sway = [a * 0.5 for a in sway]
     pts = spark_logo.outline(stretch, sway, GRAB_SCALE if grab else 1.0)
     cx, cy = _center(size)
     k = _unit(size) * shrink * breathe
@@ -146,7 +153,7 @@ def spark_image(size, t, grab=False, shrink=1.0, still=False, breathe=1.0):
         if shadow:
             ctx.set_source_rgba(0, 0, 0, 1)
         else:
-            ctx.set_source_rgb(*COLOR)
+            ctx.set_source_rgb(*color)
         ctx.fill()
 
     return _paint(size, draw)
@@ -167,21 +174,23 @@ def _hull(pts):
     return lower[:-1] + upper[:-1]
 
 
-def teardrop_body(size, scale=1.0):
-    """Center (px) and radius of the teardrop's round body."""
+def teardrop_body(size, scale=1.0, direction=45):
+    """Center (px) and radius of the teardrop's round body. `direction` is where the body
+    hangs from the tip, in degrees (y down): 45 = lower right, 90 = straight down."""
     tx, ty = _center(size)
+    ux, uy = math.cos(math.radians(direction)), math.sin(math.radians(direction))
     room = size / 2 - 0.5 - max(1.5, size / 24)            # margin for the shadow
-    R = room / (TEAR_RATIO / math.sqrt(2) + 1) * scale
+    R = room / (TEAR_RATIO * max(abs(ux), abs(uy)) + 1) * scale
     d = TEAR_RATIO * R
-    return tx + d / math.sqrt(2), ty + d / math.sqrt(2), R
+    return tx + ux * d, ty + uy * d, R
 
 
-def teardrop_points(size, scale=1.0):
-    """Outline (px) of the solid teardrop: tip on the click point, body to the lower right."""
+def teardrop_points(size, scale=1.0, direction=45):
+    """Outline (px) of the solid teardrop: tip on the click point, body toward `direction`."""
     tx, ty = _center(size)
-    R = teardrop_body(size, scale)[2]
+    R = teardrop_body(size, scale, direction)[2]
     d = TEAR_RATIO * R
-    ux = uy = 1 / math.sqrt(2)                             # toward the lower right
+    ux, uy = math.cos(math.radians(direction)), math.sin(math.radians(direction))
     rt = 0.14 * R                                          # rounded tip
     off = rt / (R / d)                                     # keeps the tip's outer edge on the point
     circles = [(tx + ux * d, ty + uy * d, R), (tx + ux * off, ty + uy * off, rt)]
@@ -372,11 +381,9 @@ def ink_image(size, u, name):
     return _to_pil(ink_symbols.render(size, u, name, blur), size)
 
 
-# ---- Cursor Cursors (optional: the drag-and-drop hands reuse its hand drawings) ----
+# ---- reading (used by checks and preview scripts) ----
 
 CURSOR_CURSORS = os.path.expanduser("~/.icons/cursor-cursors/cursors")
-CURSOR_CURSORS_SRC = os.path.expanduser("~/.local/share/cursor-cursors")
-VOLANTES = os.path.expanduser("~/.icons/volantes_light_cursors/cursors")
 
 
 def read_xcursor(path):
@@ -395,40 +402,30 @@ def read_xcursor(path):
     return out
 
 
-def hand_frames(name, kind):
-    """Volantes' drag-and-drop hand (from Cursor Cursors) with a Duet symbol in its badge spot."""
-    from PIL import Image
-    if CURSOR_CURSORS_SRC not in sys.path:
-        sys.path.insert(0, CURSOR_CURSORS_SRC)
-    import badges as sp_badges
-    # Where Volantes puts the badge on this hand, measured on its largest original.
-    vol = read_xcursor(os.path.join(VOLANTES, name))
-    vs = max(vol)
-    vcx, vcy, vrad = sp_badges.badge_circle(vol[vs][0][0])
-    sp = read_xcursor(os.path.join(CURSOR_CURSORS, name))
-
-    def frames(size):
-        if size in sp:
-            base, _, hx, hy = sp[size][0]
-        else:
-            big = max(sp)
-            base, _, hx, hy = sp[big][0]
-            base = base.resize((size, size), Image.LANCZOS)
-            hx, hy = round(hx * size / big), round(hy * size / big)
-        r = size / vs
-        cx, cy, rad = vcx * r, vcy * r, vrad * r
-        hand = sp_badges.erase_circle(base, (cx, cy, rad * 1.2))  # Cursor Cursors' hexagon is a bit larger
-        out = []
-        for f in range(FRAMES):
-            im = hand.copy()
-            im.alpha_composite(symbol_badge(size, kind, f / FRAMES, cx, cy, rad))
-            out.append(im)
-        return out, (hx, hy)
-    return frames
+def dnd_image(size, f, kind):
+    """Frame f: the grab spark (short legs) with a Duet badge for a drag-and-drop state."""
+    u = f / FRAMES
+    im = spark_image(size, u, grab=True)
+    bx, by, br = (v * size for v in DND_BADGE)
+    im.alpha_composite(symbol_badge(size, kind, u, bx, by, br))
+    return im
 
 
 # Other names apps use for the same cursor (taken from Volantes, which Cursor Cursors follows).
 ALIASES = {
+    'crosshair': ['cross', 'cross_reverse', 'diamond_cross', 'tcross'],
+    'cell': ['plus'],
+    'openhand': ['grab'],
+    'top_left_corner': ['ul_angle'],
+    'top_right_corner': ['ur_angle'],
+    'bottom_left_corner': ['ll_angle'],
+    'bottom_right_corner': ['lr_angle'],
+    'up-arrow': ['sb_up_arrow'],
+    'down-arrow': ['sb_down_arrow'],
+    'left-arrow': ['sb_left_arrow'],
+    'right-arrow': ['sb_right_arrow'],
+    'right_ptr': ['draft_large', 'draft_small'],
+    'dotbox': ['dot_box_mask', 'draped_box', 'icon', 'target'],
     'pointer': ['9d800788f1b08800ae810202380a0822', 'e29285e634086352946a0e7090d73106', 'hand', 'hand1', 'hand2', 'pointing_hand'],
     'help': ['5c6cd98b3f3ebcb1f9c7f1c204630408', 'd9ce0ab605698f320427677b458ad60b', 'left_ptr_help', 'question_arrow', 'whats_this'],
     'copy': ['1081e37283d90000800003c07f3ef6bf', '6407b0e94181790501fd1e167b474872', 'b66166c04f8c3109214a4fbd64a50fc8', 'dnd-copy'],
@@ -437,10 +434,10 @@ ALIASES = {
     'not-allowed': ['03b6e0fcb3499374a867c041f52298f0', 'circle', 'crossed_circle'],
     'x-cursor': ['X_cursor'],
     'text': ['ibeam', 'xterm'],
-    'size_hor': ['028006030e0e7ebffc7f7070c0600140', '14fef782d02440884392942c11205230', 'e-resize', 'ew-resize', 'h_double_arrow', 'sb_h_double_arrow', 'w-resize'],
-    'size_ver': ['00008160000006810000408080010102', '2870a09082c103050810ffdffffe0204', 'double_arrow', 'n-resize', 'ns-resize', 's-resize', 'sb_v_double_arrow', 'v_double_arrow'],
-    'size_fdiag': ['nw-resize', 'nwse-resize', 'se-resize'],
-    'size_bdiag': ['bd_double_arrow', 'c7088f0f3e6c8088236ef8e1e3e70000', 'fcf1c3c7cd4491d801f1e1c78f100000', 'fd_double_arrow', 'ne-resize', 'nesw-resize', 'sw-resize'],
+    'size_hor': ['size-hor', '028006030e0e7ebffc7f7070c0600140', '14fef782d02440884392942c11205230', 'e-resize', 'ew-resize', 'h_double_arrow', 'sb_h_double_arrow', 'w-resize'],
+    'size_ver': ['size-ver', '00008160000006810000408080010102', '2870a09082c103050810ffdffffe0204', 'double_arrow', 'n-resize', 'ns-resize', 's-resize', 'sb_v_double_arrow', 'v_double_arrow'],
+    'size_fdiag': ['size-fdiag', 'nw-resize', 'nwse-resize', 'se-resize'],
+    'size_bdiag': ['size-bdiag', 'bd_double_arrow', 'c7088f0f3e6c8088236ef8e1e3e70000', 'fcf1c3c7cd4491d801f1e1c78f100000', 'fd_double_arrow', 'ne-resize', 'nesw-resize', 'sw-resize'],
     'col-resize': ['split_h'],
     'row-resize': ['split_v'],
 }
@@ -487,25 +484,26 @@ POINTER_NAMES = ["left_ptr", "default", "arrow", "top_left_arrow"]
 GRAB_NAMES = [
     "grabbing", "closedhand", "fleur", "size_all", "all-scroll", "move", "dnd-move",
     "4498f0e0c1937ffe01fd06f973665830", "9081237383d90e509aa00f00170e968f",
-    "fcf21c00b30f7e3f83fe0dfd12e71cff",
+    "fcf21c00b30f7e3f83fe0dfd12e71cff", "dnd-none",
 ]
 BUSY_NAMES = ["progress", "left_ptr_watch", "half-busy", "00000000000000020006000e7e9ffc3f",
               "08e8e1c95fe2fc01f976f1e063a24ccd", "3ecb610c1bf2410f44200f48c40d3599"]
 WAIT_NAMES = ["wait", "watch"]
 BADGED = {"help": "question", "copy": "plus", "alias": "curve",
           "context-menu": "menu", "no-drop": "forbid"}
-HANDS = {"dnd-ask": "question", "dnd-link": "chain", "dnd-no-drop": "forbid"}
+DND = {"dnd-ask": "question", "dnd-link": "chain", "dnd-no-drop": "forbid"}
+TEAR_POINTERS = {"center_ptr": 90, "right_ptr": 135}  # teardrop body straight down / lower left
 ROUND = {"not-allowed": "forbid", "wayland-cursor": "w", "x-cursor": "x"}
 # One trip of the busy animation is duet.LOOP seconds (3.36 s = 48 frames at 70 ms, the spark's loop).
 BUSY_FRAMES = round(duet.LOOP * 1000 / DELAY_MS)
 
 
 def have_cursor_cursors():
-    return all(os.path.isdir(p) for p in (CURSOR_CURSORS, CURSOR_CURSORS_SRC, VOLANTES))
+    return os.path.isdir(CURSOR_CURSORS)
 
 
 def build(out_dir, inherits=None, use_cursor_cursors=True):
-    """Write the theme to out_dir. Cursors it doesn't draw come from `inherits`
+    """Write the theme to out_dir. Any cursor name it doesn't draw comes from `inherits`
     (Cursor Cursors if installed and allowed, otherwise Breeze)."""
     use_cursor_cursors = use_cursor_cursors and have_cursor_cursors()
     if inherits is None:
@@ -533,16 +531,24 @@ def build(out_dir, inherits=None, use_cursor_cursors=True):
     for name, kind in ROUND.items():
         write_frames(os.path.join(cur, name), every(lambda s, f, k=kind: round_image(s, f, k)))
         _link_all(cur, name, aliases(name))
-    if use_cursor_cursors:  # otherwise the hands come from the inherited theme
-        for name, kind in HANDS.items():
-            write_frames(os.path.join(cur, name), hand_frames(name, kind))
-            _link_all(cur, name, aliases(name))
+    for name, kind in DND.items():
+        write_frames(os.path.join(cur, name), every(lambda s, f, k=kind: dnd_image(s, f, k)))
+        _link_all(cur, name, aliases(name))
+
+    write_frames(os.path.join(cur, "openhand"), every(lambda s, f: spark_image(s, f / FRAMES, open_hand=True)))
+    _link_all(cur, "openhand", aliases("openhand"))
+    write_frames(os.path.join(cur, "pirate"), every(lambda s, f: spark_image(s, f / FRAMES, color=DEATH_COLOR)))
+    for name, direction in TEAR_POINTERS.items():
+        write_frames(os.path.join(cur, name),
+                     lambda s, d=direction: ([_poly_image(s, teardrop_points(s, direction=d))], hotspot(s)))
+        _link_all(cur, name, aliases(name))
 
     for name in ink_symbols.SYMBOLS:
         # The ink wobble steps every other frame, so half the frames at double length look the same.
         n_ink = ink_symbols.BOIL_STEPS
         write_frames(os.path.join(cur, name),
-                     every(lambda s, f, n=name: ink_image(s, f / n_ink, n), n_ink),
+                     lambda s, n=name: ([ink_image(s, f / n_ink, n) for f in range(n_ink)],
+                                        ink_symbols.hotspot(s, n)),
                      delay=DELAY_MS * FRAMES // n_ink)
         _link_all(cur, name, aliases(name))
 

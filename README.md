@@ -1,6 +1,6 @@
 # Claude Cursors
 
-An animated Linux cursor theme made from the Claude logo. The pointer is the Claude spark, and each of its 12 legs stretches and sways on its own. Busy cursors play the Claude Duet mascot, and the help, copy, link, and menu badges use Duet's ink line to draw their symbol.
+An animated Linux cursor theme made from the Claude logo. The pointer is the Claude spark, and each of its 12 legs stretches and sways on its own. Hovering a link folds the spark into a solid teardrop pointer. Busy cursors play the Claude Duet mascot, and the help, copy, link, and menu badges use Duet's ink line to draw their symbol.
 
 ![Pointer and grab](docs/pointer.gif)
 
@@ -10,10 +10,12 @@ An animated Linux cursor theme made from the Claude logo. The pointer is the Cla
 | --- | --- |
 | Pointer | The Claude spark. The click point is the center of the spark. |
 | Moving a window | The same spark with shorter legs. The center stays put. |
-| Link / button hover | The Claude logo, breathing slowly. |
-| Busy | A small spark with the Duet mascot: an ink ring orbits the orange blob, passing behind it on the far side. The full wait cursor is the mascot alone. |
-| Help, copy, link, menu, not allowed | A small spark plus a Duet blob whose ink line writes the symbol, holds it, and writes it again. |
+| Link / button hover | The spark's legs curve down-right and fold into a solid orange teardrop in about 0.3 s. The teardrop's tip is the click point. |
+| Busy | The teardrop with the Duet mascot: an ink ring orbits the orange blob, passing behind it on the far side. The full wait cursor is the mascot alone. |
+| Help, copy, link, menu, not allowed | The teardrop plus a Duet blob whose ink line writes the symbol, holds it, and writes it again. |
 | Text caret, resize arrows | Hand-drawn black ink with a cream edge so it shows on dark windows. |
+
+![Link hover](docs/hover.gif)
 
 ![Busy](docs/busy.gif)
 

@@ -3,9 +3,10 @@
 
 The pointer is the Claude spark logo, centered, with the click point at its hub. Each leg
 stretches and sways on its own. Holding a window shortens the legs; the hub stays put.
-Busy cursors show Claude Duet's mascot with an ink ring orbiting it, the help/copy/link/menu/not-allowed badges
-are Duet's blob with the ink line forming the symbol, and the text caret and resize arrows
-are drawn in Duet's ink. The pointing hand is the logo itself.
+Hovering a link morphs the spark into a solid teardrop whose tip is the click point. The
+busy and help/copy/link/menu/not-allowed cursors are that teardrop plus a Duet badge: the
+mascot with an ink ring orbiting it, or Duet's blob with the ink line forming the symbol.
+The text caret and resize arrows are drawn in Duet's ink.
 
 Usage: python3 build.py OUT_DIR [--inherits THEME] [--no-starpoint] [--preview PREVIEW_DIR]
   e.g. python3 build.py ~/.icons/claude-cursors
@@ -39,11 +40,10 @@ MAX_STRETCH = 1 + STRETCH * 1.3 + FLICKER  # longest a leg ever gets
 # The spark's reach at full stretch, as a fraction of half the cursor size.
 FILL = 0.94
 
-# Badges and the busy mascot sit at the lower right; the spark shrinks toward its hub.
-BADGE_SHRINK = 0.62
-BADGE_POS = (0.765, 0.765, 0.215)  # badge blob center x, y and radius, per cursor size
-BUSY_SHRINK = 0.62
-BUSY_SCALE = 0.0098  # mascot viewBox unit in pixels, per pixel of cursor size
+# Badged and busy cursors are the hover teardrop (tip on the click point, body to the
+# lower right) with the badge or busy mascot in the open lower-left corner.
+BADGE_POS = (0.235, 0.765, 0.215)  # badge blob center x, y and radius, per cursor size
+BUSY_SCALE = 0.0083  # mascot viewBox unit in pixels, per pixel of cursor size
 # The pointing hand: the spark's outline morphs straight into a solid teardrop whose tip
 # is on the click point, the legs curving into the body as they go. Xcursor animations
 # always loop, so the last frame (the teardrop) is held for an hour.
@@ -281,11 +281,11 @@ def symbol_badge(size, kind, u, cx, cy, rad):
 
 
 def busy_image(size, f):
-    """Frame f: smaller spark with the orbiting Duet mascot at the lower right."""
-    im = spark_image(size, (f % FRAMES) / FRAMES, shrink=BUSY_SHRINK)
+    """Frame f: the teardrop with the orbiting Duet mascot at the lower left."""
+    im = _poly_image(size, teardrop_points(size))
     k = BUSY_SCALE * size
     x0, y0, x1, y1 = duet.BOUNDS
-    ox, oy = size - 0.5 - x1 * k, size - 0.5 - y1 * k
+    ox, oy = 0.5 - x0 * k, size - 0.5 - y1 * k
     secs = f * DELAY_MS / 1000
     im.alpha_composite(_duet(size, k, ox, oy, lambda ctx, sh: duet.draw(ctx, secs, shadow=sh)))
     return im
@@ -301,9 +301,9 @@ def wait_image(size, f):
 
 
 def badged_image(size, f, kind):
-    """Frame f: smaller spark with a Duet symbol badge at the lower right."""
+    """Frame f: the teardrop with a Duet symbol badge at the lower left."""
     u = f / FRAMES
-    im = spark_image(size, u, shrink=BADGE_SHRINK)
+    im = _poly_image(size, teardrop_points(size))
     bx, by, br = (v * size for v in BADGE_POS)
     im.alpha_composite(symbol_badge(size, kind, u, bx, by, br))
     return im

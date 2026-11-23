@@ -24,16 +24,21 @@ def save_gif(path, frames, delay, scale=1):
     out[0].save(path, save_all=True, append_images=out[1:], duration=delay, loop=0,
                 optimize=False, disposal=1)
 
-def strip(ims, S):
-    row = Image.new('RGBA', (S * len(ims), S), BG)
+def strip(ims, S, gap=0):
+    row = Image.new('RGBA', (S * len(ims) + gap * (len(ims) - 1), S), BG)
     for k, im in enumerate(ims):
-        row.alpha_composite(im, (k * S, 0))
+        row.alpha_composite(im, (k * (S + gap), 0))
     return row
 
 S = 96
 save_gif('docs/pointer.gif', [strip([build.spark_image(S, f / 48), build.spark_image(S, f / 48, grab=True)], S) for f in range(48)], 70, scale=2)
-save_gif('docs/busy.gif', [strip([build.busy_image(S, f), build.wait_image(S, f)], S) for f in range(build.BUSY_FRAMES)], 70, scale=2)
+# Hover: the spark for a moment, the morph at real speed, then the teardrop.
+spark = [build.spark_image(S, f / 48) for f in range(0, 48, 2)]
+morph = [im for im, _ in build.hover_frames(S)]
+save_gif('docs/hover.gif', [strip([im], S) for im in spark + morph + [morph[-1]] * 20],
+         [70] * len(spark) + [build.MORPH_MS] * len(morph) + [70] * 20, scale=2)
+save_gif('docs/busy.gif', [strip([build.busy_image(S, f), build.wait_image(S, f)], S, gap=24) for f in range(build.BUSY_FRAMES)], 70, scale=2)
 kinds = list(build.BADGED.values())
-save_gif('docs/symbols.gif', [strip([build.badged_image(S, f, k) for k in kinds], S) for f in range(48)], 70)
+save_gif('docs/symbols.gif', [strip([build.badged_image(S, f, k) for k in kinds], S, gap=24) for f in range(48)], 70)
 names = list(ink_symbols.SYMBOLS)
 save_gif('docs/ink.gif', [strip([build.ink_image(S, f / 24, n) for n in names], S) for f in range(24)], 140)

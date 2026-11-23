@@ -2,6 +2,8 @@
 
 An animated Linux cursor theme made from the Claude logo. The pointer is the Claude spark, and each of its 12 legs stretches and sways on its own. Hovering a link folds the spark into a solid teardrop pointer. Busy cursors play the Claude Duet mascot, and the help, copy, link, and menu badges use Duet's ink line to draw their symbol.
 
+![Pointer, link hover, busy, and help](docs/showcase.gif)
+
 ![Pointer and grab](docs/pointer.gif)
 
 ## What's in it

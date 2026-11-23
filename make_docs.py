@@ -42,3 +42,42 @@ kinds = list(build.BADGED.values())
 save_gif('docs/symbols.gif', [strip([build.badged_image(S, f, k) for k in kinds], S, gap=24) for f in range(48)], 70)
 names = list(ink_symbols.SYMBOLS)
 save_gif('docs/ink.gif', [strip([build.ink_image(S, f / 24, n) for n in names], S) for f in range(24)], 140)
+
+# Showcase: one cursor stepping through its main shapes, labeled, for the first gallery image.
+# Pointer -> link hover (the legs fold into the teardrop) -> busy -> help -> back to the pointer.
+# The cursor canvas stays put, so the click point never moves, just like on screen.
+import glob
+from PIL import ImageDraw, ImageFont
+
+def showcase(path, C=200, W=340):
+    fonts = glob.glob('/usr/share/fonts/**/NotoSans-Regular.ttf', recursive=True) + \
+        glob.glob('/usr/share/fonts/**/NotoSans*.ttf', recursive=True)
+    font = ImageFont.truetype(fonts[0], 26) if fonts else ImageFont.load_default()
+    frames, delays = [], []
+
+    def add(im, label, ms):
+        f = Image.new('RGBA', (W, W), BG)
+        f.alpha_composite(im, ((W - C) // 2, 10))
+        d = ImageDraw.Draw(f)
+        tw = d.textlength(label, font=font)
+        d.text(((W - tw) / 2, W - 52), label, fill=(60, 58, 52), font=font)
+        frames.append(f)
+        delays.append(ms)
+
+    morph = [im for im, _ in build.hover_frames(C)]
+    for k in range(0, 48, 2):
+        add(build.spark_image(C, k / 48), 'Pointer', 70)
+    for im in morph:
+        add(im, 'Link hover', 60)
+    add(morph[-1], 'Link hover', 700)
+    for k in range(30):
+        add(build.busy_image(C, k), 'Busy', 70)
+    for k in range(38):
+        add(build.badged_image(C, k, 'question'), 'Help', 70)
+    for im in reversed(morph[:-1]):
+        add(im, 'Pointer', 60)
+    for k in range(0, 12, 2):
+        add(build.spark_image(C, k / 48), 'Pointer', 70)
+    save_gif(path, frames, delays)
+
+showcase('docs/showcase.gif')

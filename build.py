@@ -44,17 +44,16 @@ BADGE_SHRINK = 0.62
 BADGE_POS = (0.765, 0.765, 0.215)  # badge blob center x, y and radius, per cursor size
 BUSY_SHRINK = 0.62
 BUSY_SCALE = 0.0098  # mascot viewBox unit in pixels, per pixel of cursor size
-# The pointing hand: the spark unravels, its legs meet at the click point, and a solid
-# teardrop grows out of that point with its tip on it. Xcursor animations always loop, so
-# the last frame (the teardrop) is held for an hour.
-MORPH_MS = 28                       # frame length while morphing (11 frames, about 0.3 s)
-UNRAVEL, CONVERGE, GROW = 5, 1, 5   # frames in each part; short, since it replays on every hover
+# The pointing hand: the spark's outline morphs straight into a solid teardrop whose tip
+# is on the click point, the legs curving into the body as they go. Xcursor animations
+# always loop, so the last frame (the teardrop) is held for an hour.
+MORPH_MS = 28                       # frame length while morphing
+MORPH_FRAMES = 10                   # about 0.3 s; short, since it replays on every hover
 HOLD_MS = 3_600_000
 BEND_TO = math.radians(45)          # toward the teardrop's body (down-right); legs curve into it
 BEND = 0.8                          # how much of the way each leg curves toward it
 BEND_MAX = math.radians(120)        # cap for legs pointing the opposite way
 TEAR_RATIO = 1.8                    # tip-to-center distance / body radius (higher = sharper tip)
-GROW_OVERSHOOT = 1.2                # how much the teardrop overshoots as it pops in
 
 
 def _rand(i, salt):
@@ -149,15 +148,6 @@ def spark_image(size, t, grab=False, shrink=1.0, still=False, breathe=1.0):
     return _paint(size, draw)
 
 
-def _ease_in(t):
-    return t * t * t
-
-
-def _ease_out_back(t, s=1.7):
-    t -= 1
-    return 1 + (s + 1) * t ** 3 + s * t ** 2
-
-
 def _hull(pts):
     pts = sorted(set(pts))
     cross = lambda o, a, b: (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
@@ -173,13 +163,11 @@ def _hull(pts):
     return lower[:-1] + upper[:-1]
 
 
-def teardrop_image(size, grow):
-    """Solid orange teardrop, tip on the click point, body to the lower right; `grow`
-    scales it about the tip (0 = a point, 1 = full size)."""
+def teardrop_points(size):
+    """Outline (px) of the solid teardrop: tip on the click point, body to the lower right."""
     tx, ty = _center(size)
-    peak = max(_ease_out_back(i / 200, GROW_OVERSHOOT) for i in range(201))
     room = size / 2 - 0.5 - max(1.5, size / 24)            # margin for the shadow
-    R = room / (TEAR_RATIO / math.sqrt(2) + 1) / peak      # fits even at its biggest
+    R = room / (TEAR_RATIO / math.sqrt(2) + 1)
     d = TEAR_RATIO * R
     ux = uy = 1 / math.sqrt(2)                             # toward the lower right
     rt = 0.14 * R                                          # rounded tip
@@ -187,29 +175,43 @@ def teardrop_image(size, grow):
     circles = [(tx + ux * d, ty + uy * d, R), (tx + ux * off, ty + uy * off, rt)]
     pts = [(cx + r * math.cos(a * math.pi / 64), cy + r * math.sin(a * math.pi / 64))
            for cx, cy, r in circles for a in range(128)]
-    pts = [(tx + (x - tx) * grow, ty + (y - ty) * grow) for x, y in _hull(pts)]
+    return _hull(pts)
 
-    def draw(ctx, shadow):
-        if grow <= 0.01:
-            return
-        ctx.new_path()
-        ctx.move_to(*pts[0])
-        for p in pts[1:]:
-            ctx.line_to(*p)
-        ctx.close_path()
-        if shadow:
-            ctx.set_source_rgba(0, 0, 0, 1)
-        else:
-            ctx.set_source_rgb(*COLOR)
-        ctx.fill()
 
-    return _paint(size, draw)
+def _area(pts):
+    return sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1])) / 2
+
+
+def _arc_params(pts, n):
+    """n evenly spaced spots along a closed outline, as (vertex index, fraction to next)."""
+    segs = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:] + pts[:1])]
+    total = sum(segs)
+    out, j, run = [], 0, 0.0
+    for i in range(n):
+        target = total * i / n
+        while run + segs[j] < target:
+            run += segs[j]
+            j += 1
+        out.append((j, (target - run) / segs[j] if segs[j] else 0.0))
+    return out
+
+
+def _at(pts, params):
+    m = len(pts)
+    return [(pts[j][0] + (pts[(j + 1) % m][0] - pts[j][0]) * t,
+             pts[j][1] + (pts[(j + 1) % m][1] - pts[j][1]) * t) for j, t in params]
+
+
+MORPH_POINTS = 240
 
 
 def hover_frames(size):
-    """[(image, delay ms)] for the pointing hand: unravel, converge, grow, hold."""
+    """[(image, delay ms)] for the pointing hand: the spark's outline morphs straight into
+    the teardrop's, legs curving toward the body as they go; then the teardrop holds."""
     n = spark_logo.N_LEGS
-    out = []
+    cx, cy = _center(size)
+    k = _unit(size)
+
     def bends(amount):
         out = []
         for a in spark_logo.LEG_ANGLE:
@@ -217,30 +219,41 @@ def hover_frames(size):
             out.append(max(-BEND_MAX, min(BEND_MAX, diff)) * BEND * amount)
         return out
 
-    for f in range(UNRAVEL):  # each leg curves toward where the body will be and pulls in
-        p = (f + 1) / UNRAVEL
-        curve = 1 - (1 - p) ** 2
-        pts = spark_logo.outline([1.0] * n, bends(curve), 1 - _ease_in(p) * 0.999)
-        out.append((_shape_image(size, pts, 1.0), MORPH_MS))
-    for f in range(CONVERGE):  # the hub closes into the click point
-        p = (f + 1) / (CONVERGE + 1)
-        pts = spark_logo.outline([1.0] * n, bends(1.0), 0.001)
-        out.append((_shape_image(size, pts, 1 - p * 0.92), MORPH_MS))
-    for f in range(GROW):  # the teardrop grows out of the point
-        out.append((teardrop_image(size, _ease_out_back((f + 1) / GROW, GROW_OVERSHOOT)), MORPH_MS))
+    def spark_px(bend):
+        return [(cx + x * k, cy + y * k) for x, y in spark_logo.outline([1.0] * n, bends(bend))]
+
+    # Fixed spots along the spark's edge (same vertices and fractions every frame), and
+    # matching spots on the teardrop, both running the same way around.
+    rest = spark_px(0.0)
+    params = _arc_params(rest, MORPH_POINTS)
+    tear = teardrop_points(size)
+    if (_area(tear) > 0) != (_area(rest) > 0):
+        tear = tear[::-1]
+    tear = _at(tear, _arc_params(tear, MORPH_POINTS))
+    # Rotate the teardrop's spots so each spark spot travels as little as possible.
+    full = _at(spark_px(1.0), params)
+    shift = min(range(MORPH_POINTS), key=lambda sft: sum(
+        (full[i][0] - tear[(i + sft) % MORPH_POINTS][0]) ** 2 +
+        (full[i][1] - tear[(i + sft) % MORPH_POINTS][1]) ** 2 for i in range(0, MORPH_POINTS, 3)))
+    tear = tear[shift:] + tear[:shift]
+
+    out = []
+    for f in range(MORPH_FRAMES):
+        p = (f + 1) / MORPH_FRAMES
+        src = _at(spark_px(1 - (1 - p) ** 2), params)  # legs curve toward the body first
+        w = p * p * (3 - 2 * p)                        # then the outline settles into the teardrop
+        pts = [(a[0] + (b[0] - a[0]) * w, a[1] + (b[1] - a[1]) * w) for a, b in zip(src, tear)]
+        out.append((_poly_image(size, pts), MORPH_MS))
     out[-1] = (out[-1][0], HOLD_MS)
     return out
 
 
-def _shape_image(size, pts, k_mul):
-    cx, cy = _center(size)
-    k = _unit(size) * k_mul
-
+def _poly_image(size, pts):
     def draw(ctx, shadow):
         ctx.new_path()
-        ctx.move_to(cx + pts[0][0] * k, cy + pts[0][1] * k)
-        for x, y in pts[1:]:
-            ctx.line_to(cx + x * k, cy + y * k)
+        ctx.move_to(*pts[0])
+        for q in pts[1:]:
+            ctx.line_to(*q)
         ctx.close_path()
         if shadow:
             ctx.set_source_rgba(0, 0, 0, 1)
@@ -250,8 +263,6 @@ def _shape_image(size, pts, k_mul):
 
     return _paint(size, draw)
 
-
-# ---- Duet pieces ----
 
 def _duet(size, scale, ox, oy, draw_fn):
     def draw(ctx, shadow):

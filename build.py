@@ -8,7 +8,7 @@ busy and help/copy/link/menu/not-allowed cursors are that teardrop with Duet's i
 body: an ink ring orbiting it, or the ink line writing the symbol inside it.
 The text caret and resize arrows are drawn in Duet's ink.
 
-Usage: python3 build.py OUT_DIR [--inherits THEME] [--no-starpoint] [--preview PREVIEW_DIR]
+Usage: python3 build.py OUT_DIR [--inherits THEME] [--no-cursor-cursors] [--preview PREVIEW_DIR]
   e.g. python3 build.py ~/.icons/claude-cursors
 """
 import math
@@ -24,7 +24,7 @@ import spark_logo
 
 THEME = "claude-cursors"
 COLOR = (0xD9 / 255, 0x77 / 255, 0x57 / 255)  # Claude orange #D97757
-SIZES = [12, 18, 24, 30, 36, 42, 48, 54, 60, 66, 72, 84, 96]  # same steps as Starpoint, plus 84/96
+SIZES = [12, 18, 24, 30, 36, 42, 48, 54, 60, 66, 72, 84, 96]  # same steps as Cursor Cursors, plus 84/96
 # Each size is drawn on a canvas 25% bigger than its nominal size (Breeze does the same,
 # drawing size 30 on 40 px), so this theme looks as big as others at the same setting.
 CANVAS_SCALE = 1.25
@@ -372,10 +372,10 @@ def ink_image(size, u, name):
     return _to_pil(ink_symbols.render(size, u, name, blur), size)
 
 
-# ---- Starpoint (optional: the drag-and-drop hands reuse its hand drawings) ----
+# ---- Cursor Cursors (optional: the drag-and-drop hands reuse its hand drawings) ----
 
-STARPOINT = os.path.expanduser("~/.icons/starpoint_cursors/cursors")
-STARPOINT_SRC = os.path.expanduser("~/.local/share/starpoint-cursors")
+CURSOR_CURSORS = os.path.expanduser("~/.icons/cursor-cursors/cursors")
+CURSOR_CURSORS_SRC = os.path.expanduser("~/.local/share/cursor-cursors")
 VOLANTES = os.path.expanduser("~/.icons/volantes_light_cursors/cursors")
 
 
@@ -396,16 +396,16 @@ def read_xcursor(path):
 
 
 def hand_frames(name, kind):
-    """Volantes' drag-and-drop hand (from Starpoint) with a Duet symbol in its badge spot."""
+    """Volantes' drag-and-drop hand (from Cursor Cursors) with a Duet symbol in its badge spot."""
     from PIL import Image
-    if STARPOINT_SRC not in sys.path:
-        sys.path.insert(0, STARPOINT_SRC)
+    if CURSOR_CURSORS_SRC not in sys.path:
+        sys.path.insert(0, CURSOR_CURSORS_SRC)
     import badges as sp_badges
     # Where Volantes puts the badge on this hand, measured on its largest original.
     vol = read_xcursor(os.path.join(VOLANTES, name))
     vs = max(vol)
     vcx, vcy, vrad = sp_badges.badge_circle(vol[vs][0][0])
-    sp = read_xcursor(os.path.join(STARPOINT, name))
+    sp = read_xcursor(os.path.join(CURSOR_CURSORS, name))
 
     def frames(size):
         if size in sp:
@@ -417,7 +417,7 @@ def hand_frames(name, kind):
             hx, hy = round(hx * size / big), round(hy * size / big)
         r = size / vs
         cx, cy, rad = vcx * r, vcy * r, vrad * r
-        hand = sp_badges.erase_circle(base, (cx, cy, rad * 1.2))  # Starpoint's hexagon is a bit larger
+        hand = sp_badges.erase_circle(base, (cx, cy, rad * 1.2))  # Cursor Cursors' hexagon is a bit larger
         out = []
         for f in range(FRAMES):
             im = hand.copy()
@@ -427,7 +427,7 @@ def hand_frames(name, kind):
     return frames
 
 
-# Other names apps use for the same cursor (taken from Volantes, which Starpoint follows).
+# Other names apps use for the same cursor (taken from Volantes, which Cursor Cursors follows).
 ALIASES = {
     'pointer': ['9d800788f1b08800ae810202380a0822', 'e29285e634086352946a0e7090d73106', 'hand', 'hand1', 'hand2', 'pointing_hand'],
     'help': ['5c6cd98b3f3ebcb1f9c7f1c204630408', 'd9ce0ab605698f320427677b458ad60b', 'left_ptr_help', 'question_arrow', 'whats_this'],
@@ -500,16 +500,16 @@ ROUND = {"not-allowed": "forbid", "wayland-cursor": "w", "x-cursor": "x"}
 BUSY_FRAMES = round(duet.LOOP * 1000 / DELAY_MS)
 
 
-def have_starpoint():
-    return all(os.path.isdir(p) for p in (STARPOINT, STARPOINT_SRC, VOLANTES))
+def have_cursor_cursors():
+    return all(os.path.isdir(p) for p in (CURSOR_CURSORS, CURSOR_CURSORS_SRC, VOLANTES))
 
 
-def build(out_dir, inherits=None, use_starpoint=True):
+def build(out_dir, inherits=None, use_cursor_cursors=True):
     """Write the theme to out_dir. Cursors it doesn't draw come from `inherits`
-    (Starpoint if installed and allowed, otherwise Breeze)."""
-    use_starpoint = use_starpoint and have_starpoint()
+    (Cursor Cursors if installed and allowed, otherwise Breeze)."""
+    use_cursor_cursors = use_cursor_cursors and have_cursor_cursors()
     if inherits is None:
-        inherits = "starpoint_cursors" if use_starpoint else "breeze_cursors"
+        inherits = "cursor-cursors" if use_cursor_cursors else "breeze_cursors"
     cur = os.path.join(out_dir, "cursors")
     os.makedirs(cur, exist_ok=True)
     every = lambda fn, n=FRAMES: (lambda s: ([fn(s, f) for f in range(n)], hotspot(s)))
@@ -533,7 +533,7 @@ def build(out_dir, inherits=None, use_starpoint=True):
     for name, kind in ROUND.items():
         write_frames(os.path.join(cur, name), every(lambda s, f, k=kind: round_image(s, f, k)))
         _link_all(cur, name, aliases(name))
-    if use_starpoint:  # otherwise the hands come from the inherited theme
+    if use_cursor_cursors:  # otherwise the hands come from the inherited theme
         for name, kind in HANDS.items():
             write_frames(os.path.join(cur, name), hand_frames(name, kind))
             _link_all(cur, name, aliases(name))
@@ -577,7 +577,7 @@ if __name__ == "__main__":
         i = args.index("--inherits")
         inherits = args[i + 1]
         del args[i:i + 2]
-    use_starpoint = "--no-starpoint" not in args
-    args = [a for a in args if a != "--no-starpoint"]
+    use_cursor_cursors = "--no-cursor-cursors" not in args
+    args = [a for a in args if a != "--no-cursor-cursors"]
     if args:
-        build(args[0], inherits, use_starpoint)
+        build(args[0], inherits, use_cursor_cursors)

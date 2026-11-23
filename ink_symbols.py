@@ -12,7 +12,7 @@ import duet
 
 CREAM = (0xFA / 255, 0xF9 / 255, 0xF5 / 255)
 BOIL_STEPS = 24  # wobble changes per loop (every other frame)
-# Symbol sizes, tuned so at the same size setting they match Starpoint and Volantes:
+# Symbol sizes, tuned so at the same size setting they match Cursor Cursors and Volantes:
 # a 17 px tall caret and 21 px long arrows at size 24.
 SCALE = {"text": 0.643, "vertical-text": 0.643}
 ARROW_SCALE = 0.798

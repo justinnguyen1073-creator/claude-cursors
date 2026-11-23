@@ -47,7 +47,7 @@ BUSY_SCALE = 0.0098  # mascot viewBox unit in pixels, per pixel of cursor size
 # The pointing hand: the spark unravels, its legs meet at the click point, and a solid
 # teardrop grows out of that point with its tip on it. Xcursor animations always loop, so
 # the last frame (the teardrop) is held for an hour.
-MORPH_MS = 35                       # frame length while morphing
+MORPH_MS = 48                       # frame length while morphing (20 frames, about 1 s)
 UNRAVEL, CONVERGE, GROW = 8, 3, 10  # frames in each part
 HOLD_MS = 3_600_000
 BEND_TO = math.radians(-135)        # the teardrop's tip direction (up-left); legs curve toward it

@@ -4,8 +4,8 @@
 The pointer is the Claude spark logo, centered, with the click point at its hub. Each leg
 stretches and sways on its own. Holding a window shortens the legs; the hub stays put.
 Hovering a link morphs the spark into a solid teardrop whose tip is the click point. The
-busy and help/copy/link/menu/not-allowed cursors are that teardrop plus a Duet badge: the
-mascot with an ink ring orbiting it, or Duet's blob with the ink line forming the symbol.
+busy and help/copy/link/menu/not-allowed cursors are that teardrop with Duet's ink on its
+body: an ink ring orbiting it, or the ink line writing the symbol inside it.
 The text caret and resize arrows are drawn in Duet's ink.
 
 Usage: python3 build.py OUT_DIR [--inherits THEME] [--no-starpoint] [--preview PREVIEW_DIR]
@@ -40,10 +40,11 @@ MAX_STRETCH = 1 + STRETCH * 1.3 + FLICKER  # longest a leg ever gets
 # The spark's reach at full stretch, as a fraction of half the cursor size.
 FILL = 0.94
 
-# Badged and busy cursors are the hover teardrop (tip on the click point, body to the
-# lower right) with the badge or busy mascot in the open lower-left corner.
-BADGE_POS = (0.235, 0.765, 0.215)  # badge blob center x, y and radius, per cursor size
-BUSY_SCALE = 0.0083  # mascot viewBox unit in pixels, per pixel of cursor size
+# Badged and busy cursors are the hover teardrop with Duet's ink on its round body: the
+# symbol written inside it, or the ring orbiting it. The busy teardrop is smaller so the
+# ring fits; its tip stays on the click point.
+GLYPH_FILL = 0.95   # symbol size relative to the teardrop's body
+BUSY_TEAR = 0.62    # busy teardrop size
 # The pointing hand: the spark's outline morphs straight into a solid teardrop whose tip
 # is on the click point, the legs curving into the body as they go. Xcursor animations
 # always loop, so the last frame (the teardrop) is held for an hour.
@@ -163,11 +164,19 @@ def _hull(pts):
     return lower[:-1] + upper[:-1]
 
 
-def teardrop_points(size):
-    """Outline (px) of the solid teardrop: tip on the click point, body to the lower right."""
+def teardrop_body(size, scale=1.0):
+    """Center (px) and radius of the teardrop's round body."""
     tx, ty = _center(size)
     room = size / 2 - 0.5 - max(1.5, size / 24)            # margin for the shadow
-    R = room / (TEAR_RATIO / math.sqrt(2) + 1)
+    R = room / (TEAR_RATIO / math.sqrt(2) + 1) * scale
+    d = TEAR_RATIO * R
+    return tx + d / math.sqrt(2), ty + d / math.sqrt(2), R
+
+
+def teardrop_points(size, scale=1.0):
+    """Outline (px) of the solid teardrop: tip on the click point, body to the lower right."""
+    tx, ty = _center(size)
+    R = teardrop_body(size, scale)[2]
     d = TEAR_RATIO * R
     ux = uy = 1 / math.sqrt(2)                             # toward the lower right
     rt = 0.14 * R                                          # rounded tip
@@ -280,15 +289,59 @@ def symbol_badge(size, kind, u, cx, cy, rad):
     return _duet(size, k, cx, cy, lambda ctx, sh: duet.draw_symbol(ctx, kind, u, shadow=sh))
 
 
+def _tear_with_ink(size, scale, layers):
+    """The teardrop with Duet ink: layers(ctx) -> (ink paths behind, ink paths in front),
+    in viewBox units around the body's center, scaled so 18 units = the body's radius."""
+    pts = teardrop_points(size, scale)
+    bx, by, R = teardrop_body(size, scale)
+    back, front = layers
+
+    def draw(ctx, shadow):
+        def ink(paths):
+            ctx.save()
+            ctx.translate(bx, by)
+            ctx.scale(R / 18.0, R / 18.0)
+            for path in paths:
+                duet.trace(ctx, path)
+                ctx.fill()
+            ctx.restore()
+
+        dark = (0, 0, 0, 1) if shadow else duet.INK + (1,)
+        ctx.set_source_rgba(*dark)
+        ink(back)
+        ctx.new_path()
+        ctx.move_to(*pts[0])
+        for q in pts[1:]:
+            ctx.line_to(*q)
+        ctx.close_path()
+        if shadow:
+            ctx.set_source_rgba(0, 0, 0, 1)
+        else:
+            ctx.set_source_rgb(*COLOR)
+        ctx.fill()
+        ctx.set_source_rgba(*dark)
+        ink(front)
+
+    return _paint(size, draw)
+
+
 def busy_image(size, f):
-    """Frame f: the teardrop with the orbiting Duet mascot at the lower left."""
-    im = _poly_image(size, teardrop_points(size))
-    k = BUSY_SCALE * size
-    x0, y0, x1, y1 = duet.BOUNDS
-    ox, oy = 0.5 - x0 * k, size - 0.5 - y1 * k
-    secs = f * DELAY_MS / 1000
-    im.alpha_composite(_duet(size, k, ox, oy, lambda ctx, sh: duet.draw(ctx, secs, shadow=sh)))
-    return im
+    """Frame f: a smaller teardrop with Duet's ink ring orbiting its body."""
+    back, _, front = duet.frame(f * DELAY_MS / 1000)
+    scale = 18.0 / duet.ORBIT_RADIUS  # the ring was drawn around a blob of ORBIT_RADIUS
+    back = [_scale_path(p, scale) for p in back]
+    front = [_scale_path(p, scale) for p in front]
+    return _tear_with_ink(size, BUSY_TEAR, (back, front))
+
+
+def _scale_path(path, k):
+    out = []
+    for op in path:
+        if op[0] == "circle":
+            out.append(("circle", op[1] * k, op[2] * k, op[3] * k))
+        else:
+            out.append((op[0],) + tuple(v * k for v in op[1:]))
+    return out
 
 
 def wait_image(size, f):
@@ -301,12 +354,9 @@ def wait_image(size, f):
 
 
 def badged_image(size, f, kind):
-    """Frame f: the teardrop with a Duet symbol badge at the lower left."""
-    u = f / FRAMES
-    im = _poly_image(size, teardrop_points(size))
-    bx, by, br = (v * size for v in BADGE_POS)
-    im.alpha_composite(symbol_badge(size, kind, u, bx, by, br))
-    return im
+    """Frame f: the teardrop with Duet's ink writing `kind` inside its body."""
+    ink, _ = duet.symbol_frame(kind, f / FRAMES)
+    return _tear_with_ink(size, 1.0, ([], [_scale_path(p, GLYPH_FILL) for p in ink]))
 
 
 def round_image(size, f, kind):

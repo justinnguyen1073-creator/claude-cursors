@@ -11,8 +11,8 @@ An animated Linux cursor theme made from the Claude logo. The pointer is the Cla
 | Pointer | The Claude spark. The click point is the center of the spark. |
 | Moving a window | The same spark with shorter legs. The center stays put. |
 | Link / button hover | The spark's legs curve down-right and fold into a solid orange teardrop in about 0.3 s. The teardrop's tip is the click point. |
-| Busy | The teardrop with the Duet mascot: an ink ring orbits the orange blob, passing behind it on the far side. The full wait cursor is the mascot alone. |
-| Help, copy, link, menu, not allowed | The teardrop plus a Duet blob whose ink line writes the symbol, holds it, and writes it again. |
+| Busy | A smaller teardrop with Duet's ink ring orbiting its body, passing behind it on the far side. The full wait cursor is the Duet mascot alone. |
+| Help, copy, link, menu, not allowed | The teardrop with Duet's ink line writing the symbol inside its body, holding it, and writing it again. |
 | Text caret, resize arrows | Hand-drawn black ink with a cream edge so it shows on dark windows. |
 
 ![Link hover](docs/hover.gif)

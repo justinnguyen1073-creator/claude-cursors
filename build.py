@@ -50,7 +50,7 @@ BUSY_SCALE = 0.0098  # mascot viewBox unit in pixels, per pixel of cursor size
 MORPH_MS = 28                       # frame length while morphing (11 frames, about 0.3 s)
 UNRAVEL, CONVERGE, GROW = 5, 1, 5   # frames in each part; short, since it replays on every hover
 HOLD_MS = 3_600_000
-BEND_TO = math.radians(-135)        # the teardrop's tip direction (up-left); legs curve toward it
+BEND_TO = math.radians(45)          # toward the teardrop's body (down-right); legs curve into it
 BEND = 0.8                          # how much of the way each leg curves toward it
 BEND_MAX = math.radians(120)        # cap for legs pointing the opposite way
 TEAR_RATIO = 1.8                    # tip-to-center distance / body radius (higher = sharper tip)
@@ -217,7 +217,7 @@ def hover_frames(size):
             out.append(max(-BEND_MAX, min(BEND_MAX, diff)) * BEND * amount)
         return out
 
-    for f in range(UNRAVEL):  # each leg curves toward the tip direction and pulls into the hub
+    for f in range(UNRAVEL):  # each leg curves toward where the body will be and pulls in
         p = (f + 1) / UNRAVEL
         curve = 1 - (1 - p) ** 2
         pts = spark_logo.outline([1.0] * n, bends(curve), 1 - _ease_in(p) * 0.999)

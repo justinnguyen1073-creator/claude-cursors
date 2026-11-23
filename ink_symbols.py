@@ -12,7 +12,10 @@ import duet
 
 CREAM = (0xFA / 255, 0xF9 / 255, 0xF5 / 255)
 BOIL_STEPS = 24  # wobble changes per loop (every other frame)
-SCALE = 0.684    # symbol size: a bit under the spark, like a 27 px cursor next to a 30 px one
+# Symbol sizes, tuned so at the same size setting they match Starpoint and Volantes:
+# a 17 px tall caret and 21 px long arrows at size 24.
+SCALE = {"text": 0.643, "vertical-text": 0.643}
+ARROW_SCALE = 0.798
 WEIGHT = 0.047   # stroke width as a fraction of the cursor size
 
 
@@ -86,7 +89,8 @@ SYMBOLS = {
 
 def render(size, u, name, blur):
     """Cairo surface of symbol `name` at loop time u. `blur(surface, r)` makes the shadow."""
-    strokes = [[(x * SCALE, y * SCALE) for x, y in st] for st in SYMBOLS[name]()]
+    k = SCALE.get(name, ARROW_SCALE)
+    strokes = [[(x * k, y * k) for x, y in st] for st in SYMBOLS[name]()]
     unit = size / 100  # px per box unit
     width = max(1.4, size * WEIGHT) / unit
     halo = max(1.0, size / 30) / unit

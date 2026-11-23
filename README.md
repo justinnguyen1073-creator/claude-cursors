@@ -39,7 +39,7 @@ Cursors the theme doesn't draw (crosshair, pencil, zoom, and so on) come from Br
    - KDE Plasma: System Settings → Colors & Themes → Cursors → Claude Cursors, or run `plasma-apply-cursortheme claude-cursors`.
    - GNOME: `gsettings set org.gnome.desktop.interface cursor-theme claude-cursors`
 
-It includes 13 sizes, from 12 px to 96 px, so the size setting and display scaling both stay sharp. Installed, it takes about 150 MB because nearly every cursor is animated at every size.
+It includes 13 sizes, from 12 px to 96 px, so the size setting and display scaling both stay sharp. Like Breeze, each size is drawn 25% larger than its number, so at your usual size setting it looks as big as other themes. Installed, it takes about 200 MB because nearly every cursor is animated at every size.
 
 ## Build it yourself
 

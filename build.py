@@ -25,6 +25,9 @@ import spark_logo
 THEME = "claude-cursors"
 COLOR = (0xD9 / 255, 0x77 / 255, 0x57 / 255)  # Claude orange #D97757
 SIZES = [12, 18, 24, 30, 36, 42, 48, 54, 60, 66, 72, 84, 96]  # same steps as Starpoint, plus 84/96
+# Each size is drawn on a canvas 25% bigger than its nominal size (Breeze does the same,
+# drawing size 30 on 40 px), so this theme looks as big as others at the same setting.
+CANVAS_SCALE = 1.25
 FRAMES = 48
 DELAY_MS = 70  # 48 * 70ms = 3.36s loop
 
@@ -453,7 +456,7 @@ def write_frames(path, frames_for_size, delay=DELAY_MS):
     """frames_for_size(size) -> ([PIL images], (hx, hy)); every frame lasts `delay` ms."""
     images = []
     for size in SIZES:
-        ims, (hx, hy) = frames_for_size(size)
+        ims, (hx, hy) = frames_for_size(round(size * CANVAS_SCALE))
         for im in ims:
             im, dl = im if isinstance(im, tuple) else (im, delay)  # (image, delay) sets its own
             images.append((size, im.size[0], im.size[1], hx, hy, dl, im.tobytes("raw", "BGRa")))

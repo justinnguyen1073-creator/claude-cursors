@@ -32,7 +32,7 @@ def strip(ims, S):
 
 S = 96
 save_gif('docs/pointer.gif', [strip([build.spark_image(S, f / 48), build.spark_image(S, f / 48, grab=True)], S) for f in range(48)], 70, scale=2)
-save_gif('docs/busy.gif', [strip([build.busy_image(S, f), build.wait_image(S, f)], S) for f in range(144)], 70, scale=2)
+save_gif('docs/busy.gif', [strip([build.busy_image(S, f), build.wait_image(S, f)], S) for f in range(build.BUSY_FRAMES)], 70, scale=2)
 kinds = list(build.BADGED.values())
 save_gif('docs/symbols.gif', [strip([build.badged_image(S, f, k) for k in kinds], S) for f in range(48)], 70)
 names = list(ink_symbols.SYMBOLS)

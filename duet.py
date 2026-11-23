@@ -1,19 +1,15 @@
-"""Claude Duet's mascot, cycling through its working, thinking, and orbit poses.
+"""Claude Duet's mascot: an ink ring orbiting the clay blob, for the busy cursors.
 
 Sources:
 - The brush (`brush`) and blob wobble are ported from the Claude desktop app's Duet code.
-- Working wave, thinking loop, and the switch between poses follow the claude.com Duet
-  demo (claude.com/_next/static/chunks/f823c1ee2fa7fe75.js):
-  working = three low waves traveling left to right, a wavelength every ~628 ms,
-  height 3.5 to 4.5 units on a ~1255 ms swell; thinking = one upright loop that drifts and
-  grows; a switch retracts the old line to the right (268 ms), writes the new one in from
-  the left (565 ms), and pinches the blob up to 28.8% in between.
-- Orbit = the desktop app's "year" ring: a tilted ellipse around the blob whose back half
-  passes behind it.
+- The orbit is the desktop app's "year" ring: a tilted ellipse around the blob whose back
+  half passes behind it. A stretch of the ring travels around the blob twice per loop.
+- The symbol badges' write-on easing follows the claude.com Duet demo
+  (claude.com/_next/static/chunks/f823c1ee2fa7fe75.js), where a new line writes in from
+  its start over ~565 ms.
 
-The cursor plays: working -> thinking -> orbit -> working, in one seamless LOOP. Every
-periodic term completes a whole number of cycles per LOOP.
-Coordinates are viewBox units with the blob centered at (0, 0), radius ~18.
+Every periodic term completes a whole number of cycles per LOOP, so the cursor repeats
+seamlessly. Coordinates are viewBox units with the blob centered at (0, 0), radius ~18.
 """
 import math
 
@@ -27,17 +23,11 @@ BOIL = [[0, 0, 0, 0], [1.9, 2.7, 1.3, 3.1], [3.8, 5.1, 2.9, 0.7], [5.3, 1.1, 4.6
 CLAY = (0xD9 / 255, 0x77 / 255, 0x57 / 255)
 INK = (0x14 / 255, 0x14 / 255, 0x13 / 255)
 
-LOOP = 10.08          # seconds; 144 frames at 70 ms, three loops of the spark
-SWITCH = 0.833        # one pose change
-RETRACT = 0.268       # first part of a change
-# (pose, start time); each pose holds until the next starts, the last wraps to the first.
-SCHEDULE = [("work", 0.0), ("think", 2.4 + SWITCH), ("orbit", 2.4 + SWITCH + 2.0 + SWITCH)]
-SWITCH_AT = [2.4, 2.4 + SWITCH + 2.0, LOOP - SWITCH]  # switches into think, orbit, work
+LOOP = 3.36           # seconds; 48 frames at 70 ms, the same loop as the spark
+ORBIT_RADIUS = 18.5
 
-RADIUS = {"work": 18.0, "think": 17.0, "orbit": 18.5}
-
-# Everything drawn fits in this box (wave ends, ring, blob plus wobble, brush width).
-BOUNDS = (-38.0, -23.0, 38.0, 23.0)
+# Everything drawn fits in this box (ring, blob plus wobble, brush width).
+BOUNDS = (-37.0, -22.0, 37.0, 22.0)
 
 
 def _cyc(t, period):
@@ -55,11 +45,6 @@ def _smooth(e):
     return t * t * (3 - 2 * t)
 
 
-def _cubic_in_out(t):
-    t = _clamp(t)
-    return 4 * t ** 3 if t < 0.5 else 1 - (-2 * t + 2) ** 3 / 2
-
-
 def _write_ease(t):
     t = _clamp(t)
     return 0.45 * _smooth(t) + 0.55 * (1 - (1 - t) ** 3)
@@ -73,21 +58,7 @@ def _hash(e, t):
     return _fract(math.sin(e * 127.1 + t * 311.7) * 43758.5453)
 
 
-# ---- poses: centerline point at e in [0, 1] and time t ----
-
-def work_point(e, t):
-    amp = 4.03 + 0.5 * math.sin(TAU * _cyc(t, 1.255))
-    return (-34 + 68 * e, -amp * math.sin(3 * TAU * e - TAU * _cyc(t, 0.628)))
-
-
-def think_point(e, t):
-    """The desktop app's loop pose (`ae()`): cursive loops like the icon's "ee". Its phase
-    moves, so loops travel to the right while new ones grow in from the left."""
-    size = 10.5 * (1 + 0.12 * math.sin(TAU * _cyc(t, 1.883)))
-    n = size * _smooth((e - 0.12) / 0.14) * _smooth((0.88 - e) / 0.18)
-    r = TAU * 2.8 * (e - 0.5) - TAU * _cyc(t, 1.28)
-    return (-36 + 72 * e + n * math.sin(r), 7 - n * (1 - math.cos(r)))
-
+# ---- the ring: centerline point at e in [0, 1] and time t ----
 
 RING_TILT = -0.3
 RING_ARC = 0.62  # how much of the ring is drawn at once
@@ -107,23 +78,6 @@ def orbit_point(e, t):
 
 def orbit_behind(e, t):
     return math.sin(_ring_angle(e, t)) < 0  # the far half of the ring
-
-
-POSES = {"work": work_point, "think": think_point, "orbit": orbit_point}
-
-
-def state(t):
-    """(pose before, pose after, progress of a switch or None) at time t."""
-    t %= LOOP
-    names = [p for p, _ in SCHEDULE]
-    for i, at in enumerate(SWITCH_AT):
-        if at <= t < at + SWITCH:
-            return names[i], names[(i + 1) % 3], (t - at) / SWITCH
-    current = names[0]
-    for name, start in SCHEDULE:
-        if t >= start:
-            current = name
-    return current, current, None
 
 
 # ---- brush (ported from the desktop app) ----
@@ -210,11 +164,11 @@ def brush(pts, width, seed, boil, edge_phase):
 # ---- one frame ----
 
 def _blob(t, radius):
-    q = math.floor(t / LOOP * 80) / 80  # steps like the app's 125 ms blob updates
+    q = math.floor(t / LOOP * 24) / 24  # steps like the app's ~125 ms blob updates
     pts = []
     for e in range(48):
         r = TAU * e / 48
-        i = 1 + 0.018 * (math.sin(3 * r + TAU * 13 * q + SEED) + 0.6 * math.sin(5 * r - TAU * 18 * q))
+        i = 1 + 0.018 * (math.sin(3 * r + TAU * 4 * q + SEED) + 0.6 * math.sin(5 * r - TAU * 6 * q))
         pts.append((radius * i * math.cos(r), radius * i * math.sin(r)))
     last, first = pts[-1], pts[0]
     path = [("M", (last[0] + first[0]) / 2, (last[1] + first[1]) / 2)]
@@ -225,18 +179,12 @@ def _blob(t, radius):
     return path
 
 
-def _strokes(pose, t, lo, hi):
-    """Ink outlines for the visible part [lo, hi] of a pose: (behind, in front)."""
-    if hi - lo < 0.004:
-        return [], []
-    fn = POSES[pose]
+def _strokes(t):
+    """Ink outlines of the ring at time t: (behind the blob, in front of it)."""
     n = 200
-    es = [lo + (hi - lo) * i / n for i in range(n + 1)]
-    boil = BOIL[int(math.floor(t / LOOP * 120)) % 4]
-    edge = TAU * 2 * t / LOOP
-    width = RING_WIDTH if pose == "orbit" else INK_WIDTH
-    if pose != "orbit":
-        return [], [brush([fn(e, t) for e in es], width, SEED, boil, edge)]
+    es = [i / n for i in range(n + 1)]
+    boil = BOIL[int(math.floor(t / LOOP * 40)) % 4]  # the ink "boils" every ~84 ms
+    edge = TAU * t / LOOP
     back, front = [], []
     run = [es[0]]
     for e in es[1:]:
@@ -246,25 +194,14 @@ def _strokes(pose, t, lo, hi):
         else:
             run.append(e)
     (back if orbit_behind(run[0], t) else front).append(run)
-    mk = lambda seg: brush([fn(e, t) for e in seg], width, SEED, boil, edge)
+    mk = lambda seg: brush([orbit_point(e, t) for e in seg], RING_WIDTH, SEED, boil, edge)
     return [mk(s) for s in back if len(s) > 1], [mk(s) for s in front if len(s) > 1]
 
 
 def frame(t):
     """(ink behind the blob, blob outline, ink in front) at time t in seconds."""
-    before, after, p = state(t)
-    if p is None:
-        back, front = _strokes(before, t, 0, 1)
-        radius = RADIUS[before]
-    else:
-        cut = RETRACT / SWITCH
-        if p < cut:   # the old line pulls away to the right
-            back, front = _strokes(before, t, _smooth(p / cut), 1)
-        else:         # the new line writes in from the left
-            back, front = _strokes(after, t, 0, _write_ease((p - cut) / (1 - cut)))
-        mix = _cubic_in_out(p)
-        radius = (RADIUS[before] * (1 - mix) + RADIUS[after] * mix) * (1 - 0.288 * math.sin(math.pi * p))
-    return back, _blob(t, radius), front
+    back, front = _strokes(t)
+    return back, _blob(t, ORBIT_RADIUS), front
 
 
 def trace(ctx, path):

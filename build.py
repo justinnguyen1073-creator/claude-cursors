@@ -3,7 +3,7 @@
 
 The pointer is the Claude spark logo, centered, with the click point at its hub. Each leg
 stretches and sways on its own. Holding a window shortens the legs; the hub stays put.
-Busy cursors show Claude Duet's working mascot, the help/copy/link/menu/not-allowed badges
+Busy cursors show Claude Duet's mascot with an ink ring orbiting it, the help/copy/link/menu/not-allowed badges
 are Duet's blob with the ink line forming the symbol, and the text caret and resize arrows
 are drawn in Duet's ink. The pointing hand is the logo itself.
 
@@ -164,7 +164,7 @@ def symbol_badge(size, kind, u, cx, cy, rad):
 
 
 def busy_image(size, f):
-    """Frame f: smaller spark with the Duet working mascot at the lower right."""
+    """Frame f: smaller spark with the orbiting Duet mascot at the lower right."""
     im = spark_image(size, (f % FRAMES) / FRAMES, shrink=BUSY_SHRINK)
     k = BUSY_SCALE * size
     x0, y0, x1, y1 = duet.BOUNDS
@@ -325,8 +325,7 @@ BADGED = {"help": "question", "copy": "plus", "alias": "curve",
           "context-menu": "menu", "no-drop": "forbid"}
 HANDS = {"dnd-ask": "question", "dnd-link": "chain", "dnd-no-drop": "forbid"}
 ROUND = {"not-allowed": "forbid", "wayland-cursor": "w", "x-cursor": "x"}
-# The mascot's working -> thinking -> orbit cycle is duet.LOOP seconds (10.08 s = 144 frames
-# at 70 ms, a whole number of spark loops so both repeat cleanly).
+# One trip of the busy animation is duet.LOOP seconds (3.36 s = 48 frames at 70 ms, the spark's loop).
 BUSY_FRAMES = round(duet.LOOP * 1000 / DELAY_MS)
 
 

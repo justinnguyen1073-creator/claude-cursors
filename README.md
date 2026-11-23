@@ -11,7 +11,7 @@ An animated Linux cursor theme made from the Claude logo. The pointer is the Cla
 | Pointer | The Claude spark. The click point is the center of the spark. |
 | Moving a window | The same spark with shorter legs. The center stays put. |
 | Link / button hover | The Claude logo, breathing slowly. |
-| Busy | A small spark with the Duet mascot, which cycles through working waves, cursive loops, and a ring around the blob. |
+| Busy | A small spark with the Duet mascot: an ink ring orbits the orange blob, passing behind it on the far side. The full wait cursor is the mascot alone. |
 | Help, copy, link, menu, not allowed | A small spark plus a Duet blob whose ink line writes the symbol, holds it, and writes it again. |
 | Text caret, resize arrows | Hand-drawn black ink with a cream edge so it shows on dark windows. |
 
@@ -62,7 +62,7 @@ Values you can change at the top of `build.py`:
 ## How it works
 
 - `spark_logo.py` turns the logo outline into a polygon and finds its 12 legs. Each frame stretches and rotates every leg's points past the hub, so with every leg at rest the outline is the logo exactly.
-- `duet.py` draws the Duet mascot: the ink brush, the blob, the working, loop, and orbit poses, and the switch between them. It also draws the symbol badges.
+- `duet.py` draws the Duet mascot: the ink brush, the blob, and the ring orbiting it. It also draws the symbol badges.
 - `ink_symbols.py` draws the caret and arrows with the same brush.
 - `build.py` renders every frame with cairo and writes standard animated Xcursor files.
 - `make_docs.py` renders the preview GIFs in `docs/`.

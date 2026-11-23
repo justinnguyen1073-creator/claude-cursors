@@ -24,7 +24,7 @@ import spark_logo
 
 THEME = "claude-cursors"
 COLOR = (0xD9 / 255, 0x77 / 255, 0x57 / 255)  # Claude orange #D97757
-SIZES = [12, 18, 24, 30, 36, 42, 48, 54, 60, 66, 72, 84, 96]  # same steps as Cursor Cursors, plus 84/96
+SIZES = [12, 18, 24, 30, 36, 42, 48, 54, 60, 66, 72]  # same steps as Cursor Cursors
 # Each size is drawn on a canvas 25% bigger than its nominal size (Breeze does the same,
 # drawing size 30 on 40 px), so this theme looks as big as others at the same setting.
 CANVAS_SCALE = 1.25
